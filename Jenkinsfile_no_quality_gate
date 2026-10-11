@@ -1,0 +1,70 @@
+pipeline {
+    agent any
+
+    environment {
+        VENV = '.venv'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+                sh 'git log -1 --oneline'
+            }
+        }
+
+        stage('Setup Python') {
+            steps {
+                sh '''
+                    rm -rf "$VENV"
+                    python3 -m venv "$VENV"
+                    . "$VENV/bin/activate"
+                    python -m pip install --upgrade pip
+                    pip install -r requirements.txt
+                '''
+            }
+        }
+
+        stage('Syntax Check') {
+            steps {
+                sh '''
+                    . "$VENV/bin/activate"
+                    python -m py_compile app.py
+                '''
+            }
+        }
+
+        stage('Pytest') {
+            steps {
+                sh '''
+                    . "$VENV/bin/activate"
+                    pytest -v --junitxml=junit.xml --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
+                '''
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                script {
+                    def scannerHome = tool 'SonarScanner'
+                    withSonarQubeEnv('SonarQube') {
+                        sh "${scannerHome}/bin/sonar-scanner"
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            archiveArtifacts artifacts: 'coverage.xml', allowEmptyArchive: true
+            junit testResults: 'junit.xml', allowEmptyResults: true
+        }
+        success {
+            echo 'ACEest Jenkins pipeline completed successfully.'
+        }
+        failure {
+            echo 'ACEest Jenkins pipeline failed. Check the failed stage and console output.'
+        }
+    }
+}
