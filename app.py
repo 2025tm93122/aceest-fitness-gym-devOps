@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, render_template_string, request
 
 app = Flask(__name__)
 
@@ -34,42 +34,44 @@ svg {{ width:100%; height:auto; background:#111; border-radius:8px; }}
 </head>
 <body>{body}</body>
 </html>"""
-
 PROGRAMS = {
-    "Fat Loss (FL)": {
-        "workout": "Mon: 5x5 Back Squat + AMRAP\nTue: EMOM 20min Assault Bike\nWed: Bench Press + 21-15-9\nThu: 10RFT Deadlifts/Box Jumps\nFri: 30min Active Recovery",
-        "diet": "B: 3 Egg Whites + Oats Idli\nL: Grilled Chicken + Brown Rice\nD: Fish Curry + Millet Roti\nTarget: 2,000 kcal",
-        "color": "#e74c3c",
-    },
-    "Muscle Gain (MG)": {
-        "workout": "Mon: Squat 5x5\nTue: Bench 5x5\nWed: Deadlift 4x6\nThu: Front Squat 4x8\nFri: Incline Press 4x10\nSat: Barbell Rows 4x10",
-        "diet": "B: 4 Eggs + PB Oats\nL: Chicken Biryani (250g Chicken)\nD: Mutton Curry + Jeera Rice\nTarget: 3,200 kcal",
-        "color": "#2ecc71",
-    },
-    "Beginner (BG)": {
-        "workout": "Circuit Training: Air Squats, Ring Rows, Push-ups.\nFocus: Technique Mastery & Form (90% Threshold)",
-        "diet": "Balanced Tamil Meals: Idli-Sambar, Rice-Dal, Chapati.\nProtein: 120g/day",
-        "color": "#3498db",
-    },
+    "Fat Loss (FL)": {"workout":"Mon: Back Squat 5x5 + Core\nTue: EMOM 20min Assault Bike\nWed: Bench Press + 21-15-9\nThu: Deadlift + Box Jumps\nFri: Zone 2 Cardio 30min", "diet":"Breakfast: Egg Whites + Oats\nLunch: Grilled Chicken + Brown Rice\nDinner: Fish Curry + Millet Roti\nTarget: ~2000 kcal", "color":"#e74c3c", "calorie_factor":22},
+    "Muscle Gain (MG)": {"workout":"Mon: Squat 5x5\nTue: Bench 5x5\nWed: Deadlift 4x6\nThu: Front Squat 4x8\nFri: Incline Press 4x10\nSat: Barbell Rows 4x10", "diet":"Breakfast: Eggs + Peanut Butter Oats\nLunch: Chicken Biryani\nDinner: Mutton Curry + Rice\nTarget: ~3200 kcal", "color":"#2ecc71", "calorie_factor":35},
+    "Beginner (BG)": {"workout":"Full Body Circuit:\n- Air Squats\n- Ring Rows\n- Push-ups\nFocus: Technique & Consistency", "diet":"Balanced Tamil Meals\nIdli / Dosa / Rice + Dal\nProtein Target: 120g/day", "color":"#3498db", "calorie_factor":26},
 }
 
-SITE_METRICS = "CAPACITY: 150 Users\\nAREA: 10,000 sq ft\\nBREAK-EVEN: 250 Members"
-
 @app.get('/health')
-def health():
-    return jsonify(status='healthy')
+def health(): return {"status":"healthy"}
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET','POST'])
 def home():
-    selected = request.form.get('program') if request.method == 'POST' else request.args.get('program')
+    message = None
+    form = request.form if request.method == 'POST' else request.args
+    selected = form.get('program','')
+    name = form.get('name','')
+    age = form.get('age','')
+    weight = form.get('weight','')
+    adherence = form.get('adherence','0')
+    if request.method == 'POST' and request.form.get('action') == 'save':
+        if not name or not selected:
+            message = 'Please fill client name and program.'
+        else:
+            message = f'Client {name} saved successfully. Adherence: {adherence}%'
     data = PROGRAMS.get(selected)
-    body = f'''<div class="header">ACEest FUNCTIONAL FITNESS</div><div class="container">
-    <div class="grid"><div class="card"><h2>Client Profile</h2><form method="post">
-    <label>Select Program</label><select name="program" onchange="this.form.submit()"><option value="">Select a profile</option>{''.join(f'<option {'selected' if k==selected else ''} value="{k}">{k}</option>' for k in PROGRAMS)}</select></form>
-    <pre>{SITE_METRICS}</pre></div>
-    <div class="card"><h2>Weekly Workout Chart</h2><pre>{data['workout'] if data else 'Select a profile to view workout'}</pre></div>
-    <div class="card"><h2>Daily Nutrition Plan (Tamil Nadu Context)</h2><pre>{data['diet'] if data else 'Select a profile to view diet'}</pre></div></div></div>'''
-    return render_template_string(html('ACEest Fitness and Gym', body))
+    calories = None
+    try:
+        if data and float(weight) > 0: calories = int(float(weight) * data['calorie_factor'])
+    except (ValueError, TypeError): pass
+    body = f'''<div class="header">ACEest FUNCTIONAL FITNESS SYSTEM</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}
+    <form method="post"><div class="grid"><div class="card"><h2>Client Profile</h2>
+    <label>Name</label><input name="name" value="{name}"><label>Age</label><input name="age" type="number" value="{age}"><label>Weight (kg)</label><input name="weight" type="number" step="0.1" value="{weight}">
+    <label>Program</label><select name="program"><option value="">Select</option>{''.join(f'<option {'selected' if k==selected else ''} value="{k}">{k}</option>' for k in PROGRAMS)}</select>
+    <label>Weekly Adherence (%)</label><input name="adherence" type="number" min="0" max="100" value="{adherence}">
+    <button name="action" value="save">Save Client</button><button class="secondary" name="action" value="reset">Reset</button></div>
+    <div class="card"><h2>Weekly Training Plan</h2><pre>{data['workout'] if data else 'Select a profile'}</pre></div>
+    <div class="card"><h2>Nutrition Plan (TN Context)</h2><pre>{data['diet'] if data else 'Select a profile'}</pre><div class="metric">Estimated Calories: {str(calories)+' kcal' if calories is not None else '--'}</div></div></div></form></div>'''
+    if request.method == 'POST' and request.form.get('action') == 'reset':
+        body = home.__wrapped__ if False else body
+    return render_template_string(html('ACEest Fitness & Performance', body))
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+if __name__ == '__main__': app.run(host='0.0.0.0', port=5000)

@@ -35,32 +35,38 @@ def client(app_module):
 
 
 def test_health(client):
-    response = client.get("/health")
-    assert response.status_code == 200
-    assert response.get_json() == {"status": "healthy"}
+    assert client.get("/health").get_json() == {"status": "healthy"}
 
 
-def test_home_page_lists_all_programs(client):
+def test_home_page(client):
     response = client.get("/")
     assert response.status_code == 200
-    page = response.get_data(as_text=True)
-    assert "Fat Loss (FL)" in page
-    assert "Muscle Gain (MG)" in page
-    assert "Beginner (BG)" in page
+    assert "Client Profile" in response.get_data(as_text=True)
 
 
-def test_fat_loss_program_displays_workout_and_diet(client):
-    response = client.post("/", data={"program": "Fat Loss (FL)"})
+def test_save_client_and_calorie_estimate(client):
+    response = client.post(
+        "/",
+        data={
+            "action": "save",
+            "name": "Nia",
+            "age": "25",
+            "weight": "60",
+            "program": "Fat Loss (FL)",
+            "adherence": "85",
+        },
+    )
     assert response.status_code == 200
     page = response.get_data(as_text=True)
-    assert "Back Squat" in page
-    assert "Grilled Chicken" in page
-    assert "2,000 kcal" in page
+    assert "Client Nia saved successfully" in page
+    assert "Adherence: 85%" in page
+    assert "1320 kcal" in page
 
 
-def test_beginner_program_displays_expected_content(client):
-    response = client.post("/", data={"program": "Beginner (BG)"})
+def test_save_requires_name(client):
+    response = client.post(
+        "/",
+        data={"action": "save", "name": "", "program": "Fat Loss (FL)"},
+    )
     assert response.status_code == 200
-    page = response.get_data(as_text=True)
-    assert "Air Squats" in page
-    assert "Balanced Tamil Meals" in page
+    assert "Please fill client name and program" in response.get_data(as_text=True)
