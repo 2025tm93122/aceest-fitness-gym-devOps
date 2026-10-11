@@ -1,4 +1,6 @@
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template_string, request, send_file
+from io import StringIO, BytesIO
+import csv
 
 app = Flask(__name__)
 
@@ -34,46 +36,46 @@ svg {{ width:100%; height:auto; background:#111; border-radius:8px; }}
 </head>
 <body>{body}</body>
 </html>"""
+clients = []
 PROGRAMS = {
-    "Fat Loss (FL)": {"workout":"Mon: Back Squat 5x5 + Core\nTue: EMOM 20min Assault Bike\nWed: Bench Press + 21-15-9\nThu: Deadlift + Box Jumps\nFri: Zone 2 Cardio 30min", "diet":"Breakfast: Egg Whites + Oats\nLunch: Grilled Chicken + Brown Rice\nDinner: Fish Curry + Millet Roti\nTarget: ~2000 kcal", "color":"#e74c3c", "calorie_factor":22},
-    "Muscle Gain (MG)": {"workout":"Mon: Squat 5x5\nTue: Bench 5x5\nWed: Deadlift 4x6\nThu: Front Squat 4x8\nFri: Incline Press 4x10\nSat: Barbell Rows 4x10", "diet":"Breakfast: Eggs + Peanut Butter Oats\nLunch: Chicken Biryani\nDinner: Mutton Curry + Rice\nTarget: ~3200 kcal", "color":"#2ecc71", "calorie_factor":35},
-    "Beginner (BG)": {"workout":"Full Body Circuit:\n- Air Squats\n- Ring Rows\n- Push-ups\nFocus: Technique & Consistency", "diet":"Balanced Tamil Meals\nIdli / Dosa / Rice + Dal\nProtein Target: 120g/day", "color":"#3498db", "calorie_factor":26},
+    "Fat Loss (FL)": {"workout":"Back Squat, Cardio, Bench, Deadlift, Recovery", "diet":"Egg Whites, Chicken, Fish Curry", "color":"#e74c3c", "calorie_factor":22},
+    "Muscle Gain (MG)": {"workout":"Squat, Bench, Deadlift, Press, Rows", "diet":"Eggs, Biryani, Mutton Curry", "color":"#2ecc71", "calorie_factor":35},
+    "Beginner (BG)": {"workout":"Air Squats, Ring Rows, Push-ups", "diet":"Balanced Tamil Meals", "color":"#3498db", "calorie_factor":26},
 }
 
 @app.get('/health')
 def health(): return {"status":"healthy"}
 
-def build_home_body(name, age, weight, selected, adherence, data, calories, message):
-    body = f'''<div class="header">ACEest FUNCTIONAL FITNESS SYSTEM</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}
-    <form method="post"><div class="grid"><div class="card"><h2>Client Profile</h2>
-    <label>Name</label><input name="name" value="{name}"><label>Age</label><input name="age" type="number" value="{age}"><label>Weight (kg)</label><input name="weight" type="number" step="0.1" value="{weight}">
-    <label>Program</label><select name="program"><option value="">Select</option>{''.join(f'<option {'selected' if k==selected else ''} value="{k}">{k}</option>' for k in PROGRAMS)}</select>
-    <label>Weekly Adherence (%)</label><input name="adherence" type="number" min="0" max="100" value="{adherence}">
-    <button name="action" value="save">Save Client</button><button class="secondary" name="action" value="reset">Reset</button></div>
-    <div class="card"><h2>Weekly Training Plan</h2><pre>{data['workout'] if data else 'Select a profile'}</pre></div>
-    <div class="card"><h2>Nutrition Plan (TN Context)</h2><pre>{data['diet'] if data else 'Select a profile'}</pre><div class="metric">Estimated Calories: {str(calories)+' kcal' if calories is not None else '--'}</div></div></div></form></div>'''
-    return body
+def page(message=''):
+    selected = request.form.get('program','')
+    workout = PROGRAMS.get(selected,{}).get('workout','Select a profile')
+    diet = PROGRAMS.get(selected,{}).get('diet','Select a profile')
+    rows=''.join(f'<tr><td>{c[0]}</td><td>{c[1]}</td><td>{c[2]}</td><td>{c[3]}</td><td>{c[4]}</td><td>{c[5]}</td></tr>' for c in clients)
+    chart = ''.join(f'<div><strong>{c[0]}</strong> - {c[4]}%</div>' for c in clients) or '<span class="muted">No clients yet.</span>'
+    body=f'''<div class="header">ACEest FUNCTIONAL FITNESS SYSTEM v2</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}<form method="post">
+    <div class="grid"><div class="card"><h2>Client Profile</h2><label>Name</label><input name="name"><label>Age</label><input name="age" type="number"><label>Weight (kg)</label><input name="weight" type="number" step="0.1"><label>Program</label><select name="program">{''.join(f'<option value="{k}">{k}</option>' for k in PROGRAMS)}</select><label>Weekly Adherence (%)</label><input name="adherence" type="number" min="0" max="100"><label>Coach Notes</label><input name="notes"><button>Save Client</button><a class="btn secondary" href="/export.csv">Export CSV</a><a class="btn secondary" href="/reset">Reset</a></div>
+    <div class="card"><h2>Weekly Training Plan</h2><pre>{workout}</pre></div><div class="card"><h2>Nutrition Plan</h2><pre>{diet}</pre></div></div></form>
+    <div class="card"><h2>Client List</h2><table><tr><th>Name</th><th>Age</th><th>Weight</th><th>Program</th><th>Adherence</th><th>Notes</th></tr>{rows}</table></div>
+    <div class="card"><h2>Progress Chart</h2>{chart}</div></div>'''
+    return render_template_string(html('ACEest v1.1.2',body))
 
 @app.route('/', methods=['GET','POST'])
 def home():
-    message = None
-    form = request.form if request.method == 'POST' else request.args
-    selected = form.get('program','')
-    name = form.get('name','')
-    age = form.get('age','')
-    weight = form.get('weight','')
-    adherence = form.get('adherence','0')
-    if request.method == 'POST' and request.form.get('action') == 'save':
-        if not name or not selected:
-            message = 'Please fill client name and program.'
-        else:
-            message = f'Client {name} saved successfully. Adherence: {adherence}%'
-    data = PROGRAMS.get(selected)
-    calories = None
-    try:
-        if data and float(weight) > 0: calories = int(float(weight) * data['calorie_factor'])
-    except (ValueError, TypeError): pass
-    body = build_home_body(name, age, weight, selected, adherence, data, calories, message)
-    return render_template_string(html('ACEest Fitness & Performance', body))
+    if request.method=='POST':
+        try: client=(request.form.get('name',''), int(request.form.get('age') or 0), float(request.form.get('weight') or 0), request.form.get('program',''), int(float(request.form.get('adherence') or 0)), request.form.get('notes',''))
+        except ValueError: return page('Age, weight and adherence must be numeric.')
+        if not client[0] or not client[3]: return page('Please fill client name and program.')
+        clients.append(client)
+        return page(f'Client {client[0]} saved successfully.')
+    return page()
 
-if __name__ == '__main__': app.run(host='127.0.0.1', port=5000)
+@app.get('/export.csv')
+def export_csv():
+    s=StringIO(); w=csv.writer(s); w.writerow(['Name','Age','Weight','Program','Adherence','Notes']); w.writerows(clients)
+    return send_file(BytesIO(s.getvalue().encode()), mimetype='text/csv', as_attachment=True, download_name='aceest_clients.csv')
+
+@app.get('/reset')
+def reset():
+    clients.clear(); return page('Client list reset.')
+
+if __name__=='__main__': app.run(host='0.0.0.0',port=5000)
