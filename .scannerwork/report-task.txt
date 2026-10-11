@@ -1,6 +1,0 @@
-projectKey=aceest-fitness-gym
-serverUrl=http://localhost:9000
-serverVersion=26.9.0.129388
-dashboardUrl=http://localhost:9000/dashboard?id=aceest-fitness-gym
-ceTaskId=d65457f5-a636-4c13-ad61-f1dc665cd2ab
-ceTaskUrl=http://localhost:9000/api/ce/task?id=d65457f5-a636-4c13-ad61-f1dc665cd2ab

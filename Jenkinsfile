@@ -17,7 +17,7 @@ pipeline {
             steps {
                 sh '''
                     rm -rf "$VENV"
-                    python3 -m venv "$VENV"
+                    python3.12 -m venv "$VENV"
                     . "$VENV/bin/activate"
                     python -m pip install --upgrade pip
                     pip install -r requirements.txt
