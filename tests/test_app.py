@@ -38,57 +38,43 @@ def test_health(client):
     assert client.get("/health").get_json() == {"status": "healthy"}
 
 
-def test_save_client_adds_to_client_list(client, app_module):
+def test_save_client_persists_and_calculates_calories(client, app_module):
     response = client.post(
         "/",
         data={
+            "action": "save",
             "name": "Nia",
             "age": "25",
             "weight": "60",
             "program": "Fat Loss (FL)",
-            "adherence": "90",
-            "notes": "Consistent training",
         },
     )
     assert response.status_code == 200
-    assert "Client Nia saved successfully" in response.get_data(as_text=True)
-    assert len(app_module.clients) == 1
-    assert app_module.clients[0][0] == "Nia"
-    assert app_module.clients[0][4] == 90
+    assert "Client data saved" in response.get_data(as_text=True)
+    connection = app_module.get_conn()
+    row = connection.execute("SELECT * FROM clients WHERE name=?", ("Nia",)).fetchone()
+    connection.close()
+    assert row is not None
+    assert row["calories"] == 1320
 
 
-def test_export_csv_contains_saved_client(client):
-    client.post(
-        "/",
-        data={
-            "name": "Nia",
-            "age": "25",
-            "weight": "60",
-            "program": "Beginner (BG)",
-            "adherence": "75",
-            "notes": "Week one",
-        },
-    )
-    response = client.get("/export.csv")
-    assert response.status_code == 200
-    assert response.mimetype == "text/csv"
-    csv_text = response.get_data(as_text=True)
-    assert "Name,Age,Weight,Program,Adherence,Notes" in csv_text
-    assert "Nia,25,60.0,Beginner (BG),75,Week one" in csv_text
-
-
-def test_reset_clears_clients(client, app_module):
-    app_module.clients.append(("Nia", 25, 60.0, "Beginner (BG)", 75, ""))
-    response = client.get("/reset")
-    assert response.status_code == 200
-    assert app_module.clients == []
-    assert "Client list reset" in response.get_data(as_text=True)
-
-
-def test_invalid_numeric_input_is_handled(client):
+def test_save_weekly_progress(client, app_module):
     response = client.post(
         "/",
-        data={"name": "Nia", "age": "abc", "program": "Beginner (BG)"},
+        data={"action": "progress", "name": "Nia", "adherence": "88"},
     )
     assert response.status_code == 200
-    assert "must be numeric" in response.get_data(as_text=True)
+    assert "Weekly progress logged" in response.get_data(as_text=True)
+    connection = app_module.get_conn()
+    row = connection.execute(
+        "SELECT client_name, adherence FROM progress ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+    connection.close()
+    assert row["client_name"] == "Nia"
+    assert row["adherence"] == 88
+
+
+def test_client_name_and_program_are_required(client):
+    response = client.post("/", data={"action": "save", "name": "", "program": ""})
+    assert response.status_code == 200
+    assert "Name and Program required" in response.get_data(as_text=True)

@@ -1,6 +1,6 @@
-from flask import Flask, render_template_string, request, send_file
-from io import StringIO, BytesIO
-import csv
+from flask import Flask, jsonify, render_template_string, request
+import sqlite3
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -36,46 +36,53 @@ svg {{ width:100%; height:auto; background:#111; border-radius:8px; }}
 </head>
 <body>{body}</body>
 </html>"""
-clients = []
-PROGRAMS = {
-    "Fat Loss (FL)": {"workout":"Back Squat, Cardio, Bench, Deadlift, Recovery", "diet":"Egg Whites, Chicken, Fish Curry", "color":"#e74c3c", "calorie_factor":22},
-    "Muscle Gain (MG)": {"workout":"Squat, Bench, Deadlift, Press, Rows", "diet":"Eggs, Biryani, Mutton Curry", "color":"#2ecc71", "calorie_factor":35},
-    "Beginner (BG)": {"workout":"Air Squats, Ring Rows, Push-ups", "diet":"Balanced Tamil Meals", "color":"#3498db", "calorie_factor":26},
-}
+DB_NAME='aceest_fitness.db'
+PROGRAMS={"Fat Loss (FL)":{"factor":22},"Muscle Gain (MG)":{"factor":35},"Beginner (BG)":{"factor":26}}
+
+def get_conn():
+    conn=sqlite3.connect(DB_NAME)
+    conn.row_factory=sqlite3.Row
+    return conn
+
+def init_db():
+    conn=get_conn(); cur=conn.cursor()
+    cur.execute('CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,age INTEGER,weight REAL,program TEXT,calories INTEGER)')
+    cur.execute('CREATE TABLE IF NOT EXISTS progress (id INTEGER PRIMARY KEY AUTOINCREMENT,client_name TEXT,week TEXT,adherence INTEGER)')
+    conn.commit(); conn.close()
+init_db()
 
 @app.get('/health')
-def health(): return {"status":"healthy"}
-
-def page(message=''):
-    selected = request.form.get('program','')
-    workout = PROGRAMS.get(selected,{}).get('workout','Select a profile')
-    diet = PROGRAMS.get(selected,{}).get('diet','Select a profile')
-    rows=''.join(f'<tr><td>{c[0]}</td><td>{c[1]}</td><td>{c[2]}</td><td>{c[3]}</td><td>{c[4]}</td><td>{c[5]}</td></tr>' for c in clients)
-    chart = ''.join(f'<div><strong>{c[0]}</strong> - {c[4]}%</div>' for c in clients) or '<span class="muted">No clients yet.</span>'
-    body=f'''<div class="header">ACEest FUNCTIONAL FITNESS SYSTEM v2</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}<form method="post">
-    <div class="grid"><div class="card"><h2>Client Profile</h2><label>Name</label><input name="name"><label>Age</label><input name="age" type="number"><label>Weight (kg)</label><input name="weight" type="number" step="0.1"><label>Program</label><select name="program">{''.join(f'<option value="{k}">{k}</option>' for k in PROGRAMS)}</select><label>Weekly Adherence (%)</label><input name="adherence" type="number" min="0" max="100"><label>Coach Notes</label><input name="notes"><button>Save Client</button><a class="btn secondary" href="/export.csv">Export CSV</a><a class="btn secondary" href="/reset">Reset</a></div>
-    <div class="card"><h2>Weekly Training Plan</h2><pre>{workout}</pre></div><div class="card"><h2>Nutrition Plan</h2><pre>{diet}</pre></div></div></form>
-    <div class="card"><h2>Client List</h2><table><tr><th>Name</th><th>Age</th><th>Weight</th><th>Program</th><th>Adherence</th><th>Notes</th></tr>{rows}</table></div>
-    <div class="card"><h2>Progress Chart</h2>{chart}</div></div>'''
-    return render_template_string(html('ACEest v1.1.2',body))
+def health(): return jsonify(status='healthy')
 
 @app.route('/', methods=['GET','POST'])
 def home():
+    message=''
     if request.method=='POST':
-        try: client=(request.form.get('name',''), int(request.form.get('age') or 0), float(request.form.get('weight') or 0), request.form.get('program',''), int(float(request.form.get('adherence') or 0)), request.form.get('notes',''))
-        except ValueError: return page('Age, weight and adherence must be numeric.')
-        if not client[0] or not client[3]: return page('Please fill client name and program.')
-        clients.append(client)
-        return page(f'Client {client[0]} saved successfully.')
-    return page()
+        action=request.form.get('action')
+        name=request.form.get('name','').strip(); program=request.form.get('program','').strip()
+        if action=='save':
+            if not name or not program: message='Name and Program required'
+            else:
+                try:
+                    age=int(request.form.get('age') or 0); weight=float(request.form.get('weight') or 0)
+                except ValueError: message='Age and weight must be numeric'
+                else:
+                    calories=int(weight*PROGRAMS[program]['factor'])
+                    conn=get_conn(); conn.execute('INSERT OR REPLACE INTO clients(name,age,weight,program,calories) VALUES (?,?,?,?,?)',(name,age,weight,program,calories)); conn.commit(); conn.close(); message='Client data saved'
+        elif action=='progress':
+            try: adherence=int(float(request.form.get('adherence') or 0))
+            except ValueError: adherence=0
+            if not name: message='Enter client name first'
+            else:
+                conn=get_conn(); week=datetime.now().strftime('Week %U - %Y'); conn.execute('INSERT INTO progress(client_name,week,adherence) VALUES (?,?,?)',(name,week,adherence)); conn.commit(); conn.close(); message='Weekly progress logged'
+    conn=get_conn(); clients=conn.execute('SELECT * FROM clients ORDER BY name').fetchall(); progress=conn.execute('SELECT * FROM progress ORDER BY id DESC').fetchall(); conn.close()
+    rows=''.join(f'<tr><td>{r["name"]}</td><td>{r["age"]}</td><td>{r["weight"]}</td><td>{r["program"]}</td><td>{r["calories"]}</td></tr>' for r in clients)
+    prows=''.join(f'<tr><td>{r["client_name"]}</td><td>{r["week"]}</td><td>{r["adherence"]}%</td></tr>' for r in progress)
+    body=f'''<div class="header">ACEest Functional Fitness System</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}
+    <div class="grid"><div class="card"><h2>Client Management</h2><form method="post"><input type="hidden" name="action" value="save"><label>Name</label><input name="name"><label>Age</label><input name="age" type="number"><label>Weight (kg)</label><input name="weight" type="number" step="0.1"><label>Program</label><select name="program">{''.join(f'<option value="{k}">{k}</option>' for k in PROGRAMS)}</select><button>Save Client</button></form></div>
+    <div class="card"><h2>Weekly Progress</h2><form method="post"><input type="hidden" name="action" value="progress"><label>Client Name</label><input name="name"><label>Adherence %</label><input name="adherence" type="number" min="0" max="100"><button>Save Progress</button></form></div></div>
+    <div class="card"><h2>Clients</h2><table><tr><th>Name</th><th>Age</th><th>Weight</th><th>Program</th><th>Calories</th></tr>{rows}</table></div>
+    <div class="card"><h2>Progress</h2><table><tr><th>Client</th><th>Week</th><th>Adherence</th></tr>{prows}</table></div></div>'''
+    return render_template_string(html('ACEest v2.0.1',body))
 
-@app.get('/export.csv')
-def export_csv():
-    s=StringIO(); w=csv.writer(s); w.writerow(['Name','Age','Weight','Program','Adherence','Notes']); w.writerows(clients)
-    return send_file(BytesIO(s.getvalue().encode()), mimetype='text/csv', as_attachment=True, download_name='aceest_clients.csv')
-
-@app.get('/reset')
-def reset():
-    clients.clear(); return page('Client list reset.')
-
-if __name__=='__main__': app.run(host='127.0.0.1',port=5000)
+if __name__=='__main__': app.run(host='0.0.0.0',port=5000)
