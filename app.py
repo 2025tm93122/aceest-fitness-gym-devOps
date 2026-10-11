@@ -1,6 +1,8 @@
-from flask import Flask, jsonify, render_template_string, request
+from flask import Flask, jsonify, request
+from markupsafe import escape
 import sqlite3
 from datetime import datetime
+
 
 app = Flask(__name__)
 
@@ -36,53 +38,310 @@ svg {{ width:100%; height:auto; background:#111; border-radius:8px; }}
 </head>
 <body>{body}</body>
 </html>"""
-DB_NAME='aceest_fitness.db'
-PROGRAMS={"Fat Loss (FL)":{"factor":22},"Muscle Gain (MG)":{"factor":35},"Beginner (BG)":{"factor":26}}
+
+
+DB_NAME = 'aceest_fitness.db'
+
+PROGRAMS = {
+    "Fat Loss (FL)": {
+        "factor": 22
+    },
+    "Muscle Gain (MG)": {
+        "factor": 35
+    },
+    "Beginner (BG)": {
+        "factor": 26
+    }
+}
+
 
 def get_conn():
-    conn=sqlite3.connect(DB_NAME)
-    conn.row_factory=sqlite3.Row
+    conn = sqlite3.connect(DB_NAME)
+    conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
-    conn=get_conn(); cur=conn.cursor()
-    cur.execute('CREATE TABLE IF NOT EXISTS clients (id INTEGER PRIMARY KEY AUTOINCREMENT,name TEXT UNIQUE,age INTEGER,weight REAL,program TEXT,calories INTEGER)')
-    cur.execute('CREATE TABLE IF NOT EXISTS progress (id INTEGER PRIMARY KEY AUTOINCREMENT,client_name TEXT,week TEXT,adherence INTEGER)')
-    conn.commit(); conn.close()
+    conn = get_conn()
+    cur = conn.cursor()
+
+    cur.execute(
+        'CREATE TABLE IF NOT EXISTS clients '
+        '(id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'name TEXT UNIQUE, '
+        'age INTEGER, '
+        'weight REAL, '
+        'program TEXT, '
+        'calories INTEGER)'
+    )
+
+    cur.execute(
+        'CREATE TABLE IF NOT EXISTS progress '
+        '(id INTEGER PRIMARY KEY AUTOINCREMENT, '
+        'client_name TEXT, '
+        'week TEXT, '
+        'adherence INTEGER)'
+    )
+
+    conn.commit()
+    conn.close()
+
+
 init_db()
 
+
 @app.get('/health')
-def health(): return jsonify(status='healthy')
+def health():
+    return jsonify(status='healthy')
 
-@app.route('/', methods=['GET','POST'])
+
+def save_client():
+    """Validate and save client information."""
+    name = request.form.get('name', '').strip()
+    program = request.form.get('program', '').strip()
+
+    if not name or program not in PROGRAMS:
+        return 'Name and Program required'
+
+    try:
+        age = int(request.form.get('age') or 0)
+        weight = float(request.form.get('weight') or 0)
+    except ValueError:
+        return 'Age and weight must be numeric'
+
+    calories = int(weight * PROGRAMS[program]['factor'])
+
+    conn = get_conn()
+
+    conn.execute(
+        'INSERT OR REPLACE INTO clients '
+        '(name, age, weight, program, calories) '
+        'VALUES (?, ?, ?, ?, ?)',
+        (name, age, weight, program, calories)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return 'Client data saved'
+
+
+def save_progress():
+    """Validate and save weekly progress."""
+    name = request.form.get('name', '').strip()
+
+    if not name:
+        return 'Enter client name first'
+
+    try:
+        adherence = int(float(request.form.get('adherence') or 0))
+    except ValueError:
+        adherence = 0
+
+    week = datetime.now().strftime('Week %U - %Y')
+
+    conn = get_conn()
+
+    conn.execute(
+        'INSERT INTO progress '
+        '(client_name, week, adherence) '
+        'VALUES (?, ?, ?)',
+        (name, week, adherence)
+    )
+
+    conn.commit()
+    conn.close()
+
+    return 'Weekly progress logged'
+
+
+def load_dashboard_data():
+    """Load clients and progress records from SQLite."""
+    conn = get_conn()
+
+    clients = conn.execute(
+        'SELECT * FROM clients ORDER BY name'
+    ).fetchall()
+
+    progress = conn.execute(
+        'SELECT * FROM progress ORDER BY id DESC'
+    ).fetchall()
+
+    conn.close()
+
+    return clients, progress
+
+
+def build_client_rows(clients):
+    """Create HTML rows for client data."""
+    return ''.join(
+        f'<tr>'
+        f'<td>{escape(row["name"])}</td>'
+        f'<td>{row["age"]}</td>'
+        f'<td>{row["weight"]}</td>'
+        f'<td>{escape(row["program"])}</td>'
+        f'<td>{row["calories"]}</td>'
+        f'</tr>'
+        for row in clients
+    )
+
+
+def build_progress_rows(progress):
+    """Create HTML rows for progress data."""
+    return ''.join(
+        f'<tr>'
+        f'<td>{escape(row["client_name"])}</td>'
+        f'<td>{escape(row["week"])}</td>'
+        f'<td>{row["adherence"]}%</td>'
+        f'</tr>'
+        for row in progress
+    )
+
+
+def render_dashboard(message=''):
+    """Render the main ACEest dashboard."""
+    clients, progress = load_dashboard_data()
+
+    rows = build_client_rows(clients)
+    prows = build_progress_rows(progress)
+
+    options = ''.join(
+        f'<option value="{escape(name)}">{escape(name)}</option>'
+        for name in PROGRAMS
+    )
+
+    alert = (
+        f'<div class="alert">{escape(message)}</div>'
+        if message
+        else ''
+    )
+
+    body = f"""
+<div class="header">
+    ACEest Functional Fitness System
+</div>
+
+<div class="container">
+
+{alert}
+
+<div class="grid">
+
+<div class="card">
+<h2>Client Management</h2>
+
+<form method="post">
+
+<input type="hidden" name="action" value="save">
+
+<label>Name</label>
+<input name="name">
+
+<label>Age</label>
+<input name="age" type="number">
+
+<label>Weight (kg)</label>
+<input name="weight" type="number" step="0.1">
+
+<label>Program</label>
+<select name="program">
+{options}
+</select>
+
+<button>Save Client</button>
+
+</form>
+</div>
+
+
+<div class="card">
+
+<h2>Weekly Progress</h2>
+
+<form method="post">
+
+<input type="hidden" name="action" value="progress">
+
+<label>Client Name</label>
+<input name="name">
+
+<label>Adherence %</label>
+<input
+    name="adherence"
+    type="number"
+    min="0"
+    max="100"
+>
+
+<button>Save Progress</button>
+
+</form>
+</div>
+
+</div>
+
+
+<div class="card">
+
+<h2>Clients</h2>
+
+<table>
+
+<tr>
+<th>Name</th>
+<th>Age</th>
+<th>Weight</th>
+<th>Program</th>
+<th>Calories</th>
+</tr>
+
+{rows}
+
+</table>
+
+</div>
+
+
+<div class="card">
+
+<h2>Progress</h2>
+
+<table>
+
+<tr>
+<th>Client</th>
+<th>Week</th>
+<th>Adherence</th>
+</tr>
+
+{prows}
+
+</table>
+
+</div>
+
+</div>
+"""
+
+    return html('ACEest v2.0.1', body)
+
+
+@app.route('/', methods=['GET', 'POST'])
 def home():
-    message=''
-    if request.method=='POST':
-        action=request.form.get('action')
-        name=request.form.get('name','').strip(); program=request.form.get('program','').strip()
-        if action=='save':
-            if not name or not program: message='Name and Program required'
-            else:
-                try:
-                    age=int(request.form.get('age') or 0); weight=float(request.form.get('weight') or 0)
-                except ValueError: message='Age and weight must be numeric'
-                else:
-                    calories=int(weight*PROGRAMS[program]['factor'])
-                    conn=get_conn(); conn.execute('INSERT OR REPLACE INTO clients(name,age,weight,program,calories) VALUES (?,?,?,?,?)',(name,age,weight,program,calories)); conn.commit(); conn.close(); message='Client data saved'
-        elif action=='progress':
-            try: adherence=int(float(request.form.get('adherence') or 0))
-            except ValueError: adherence=0
-            if not name: message='Enter client name first'
-            else:
-                conn=get_conn(); week=datetime.now().strftime('Week %U - %Y'); conn.execute('INSERT INTO progress(client_name,week,adherence) VALUES (?,?,?)',(name,week,adherence)); conn.commit(); conn.close(); message='Weekly progress logged'
-    conn=get_conn(); clients=conn.execute('SELECT * FROM clients ORDER BY name').fetchall(); progress=conn.execute('SELECT * FROM progress ORDER BY id DESC').fetchall(); conn.close()
-    rows=''.join(f'<tr><td>{r["name"]}</td><td>{r["age"]}</td><td>{r["weight"]}</td><td>{r["program"]}</td><td>{r["calories"]}</td></tr>' for r in clients)
-    prows=''.join(f'<tr><td>{r["client_name"]}</td><td>{r["week"]}</td><td>{r["adherence"]}%</td></tr>' for r in progress)
-    body=f'''<div class="header">ACEest Functional Fitness System</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}
-    <div class="grid"><div class="card"><h2>Client Management</h2><form method="post"><input type="hidden" name="action" value="save"><label>Name</label><input name="name"><label>Age</label><input name="age" type="number"><label>Weight (kg)</label><input name="weight" type="number" step="0.1"><label>Program</label><select name="program">{''.join(f'<option value="{k}">{k}</option>' for k in PROGRAMS)}</select><button>Save Client</button></form></div>
-    <div class="card"><h2>Weekly Progress</h2><form method="post"><input type="hidden" name="action" value="progress"><label>Client Name</label><input name="name"><label>Adherence %</label><input name="adherence" type="number" min="0" max="100"><button>Save Progress</button></form></div></div>
-    <div class="card"><h2>Clients</h2><table><tr><th>Name</th><th>Age</th><th>Weight</th><th>Program</th><th>Calories</th></tr>{rows}</table></div>
-    <div class="card"><h2>Progress</h2><table><tr><th>Client</th><th>Week</th><th>Adherence</th></tr>{prows}</table></div></div>'''
-    return render_template_string(html('ACEest v2.0.1',body))
+    """Display the dashboard and route POST actions."""
+    if request.method != 'POST':
+        return render_dashboard()
 
-if __name__=='__main__': app.run(host='0.0.0.0',port=5000)
+    action = request.form.get('action')
+
+    if action == 'save':
+        return render_dashboard(save_client())
+
+    if action == 'progress':
+        return render_dashboard(save_progress())
+
+    return render_dashboard()
+
+
+if __name__ == '__main__':
+    app.run(host='127.0.0.1', port=5000)
