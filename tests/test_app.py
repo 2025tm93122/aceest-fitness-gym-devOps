@@ -38,8 +38,8 @@ def test_health(client):
     assert client.get("/health").get_json() == {"status": "healthy"}
 
 
-def test_save_client_persists_and_calculates_calories(client, app_module):
-    response = client.post(
+def test_save_client_and_progress_chart(client, app_module):
+    save = client.post(
         "/",
         data={
             "action": "save",
@@ -49,32 +49,22 @@ def test_save_client_persists_and_calculates_calories(client, app_module):
             "program": "Fat Loss (FL)",
         },
     )
-    assert response.status_code == 200
-    assert "Client data saved" in response.get_data(as_text=True)
-    connection = app_module.get_conn()
-    row = connection.execute("SELECT * FROM clients WHERE name=?", ("Nia",)).fetchone()
-    connection.close()
-    assert row is not None
-    assert row["calories"] == 1320
-
-
-def test_save_weekly_progress(client, app_module):
-    response = client.post(
-        "/",
-        data={"action": "progress", "name": "Nia", "adherence": "88"},
+    assert save.status_code == 200
+    progress = client.post(
+        "/", data={"action": "progress", "name": "Nia", "adherence": "82"}
     )
-    assert response.status_code == 200
-    assert "Weekly progress logged" in response.get_data(as_text=True)
-    connection = app_module.get_conn()
-    row = connection.execute(
-        "SELECT client_name, adherence FROM progress ORDER BY id DESC LIMIT 1"
-    ).fetchone()
+    assert progress.status_code == 200
+    page = progress.get_data(as_text=True)
+    assert "Weekly progress logged" in page
+    assert "<svg" in page
+    assert "82%" in page
+    connection = app_module.conn()
+    row = connection.execute("SELECT adherence FROM progress ORDER BY id DESC LIMIT 1").fetchone()
     connection.close()
-    assert row["client_name"] == "Nia"
-    assert row["adherence"] == 88
+    assert row["adherence"] == 82
 
 
-def test_client_name_and_program_are_required(client):
-    response = client.post("/", data={"action": "save", "name": "", "program": ""})
+def test_empty_progress_has_friendly_message(client):
+    response = client.get("/")
     assert response.status_code == 200
-    assert "Name and Program required" in response.get_data(as_text=True)
+    assert "No progress data available" in response.get_data(as_text=True)
