@@ -43,6 +43,17 @@ PROGRAMS = {
 @app.get('/health')
 def health(): return {"status":"healthy"}
 
+def build_home_body(name, age, weight, selected, adherence, data, calories, message):
+    body = f'''<div class="header">ACEest FUNCTIONAL FITNESS SYSTEM</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}
+    <form method="post"><div class="grid"><div class="card"><h2>Client Profile</h2>
+    <label>Name</label><input name="name" value="{name}"><label>Age</label><input name="age" type="number" value="{age}"><label>Weight (kg)</label><input name="weight" type="number" step="0.1" value="{weight}">
+    <label>Program</label><select name="program"><option value="">Select</option>{''.join(f'<option {'selected' if k==selected else ''} value="{k}">{k}</option>' for k in PROGRAMS)}</select>
+    <label>Weekly Adherence (%)</label><input name="adherence" type="number" min="0" max="100" value="{adherence}">
+    <button name="action" value="save">Save Client</button><button class="secondary" name="action" value="reset">Reset</button></div>
+    <div class="card"><h2>Weekly Training Plan</h2><pre>{data['workout'] if data else 'Select a profile'}</pre></div>
+    <div class="card"><h2>Nutrition Plan (TN Context)</h2><pre>{data['diet'] if data else 'Select a profile'}</pre><div class="metric">Estimated Calories: {str(calories)+' kcal' if calories is not None else '--'}</div></div></div></form></div>'''
+    return body
+
 @app.route('/', methods=['GET','POST'])
 def home():
     message = None
@@ -62,16 +73,7 @@ def home():
     try:
         if data and float(weight) > 0: calories = int(float(weight) * data['calorie_factor'])
     except (ValueError, TypeError): pass
-    body = f'''<div class="header">ACEest FUNCTIONAL FITNESS SYSTEM</div><div class="container">{'<div class="alert">'+message+'</div>' if message else ''}
-    <form method="post"><div class="grid"><div class="card"><h2>Client Profile</h2>
-    <label>Name</label><input name="name" value="{name}"><label>Age</label><input name="age" type="number" value="{age}"><label>Weight (kg)</label><input name="weight" type="number" step="0.1" value="{weight}">
-    <label>Program</label><select name="program"><option value="">Select</option>{''.join(f'<option {'selected' if k==selected else ''} value="{k}">{k}</option>' for k in PROGRAMS)}</select>
-    <label>Weekly Adherence (%)</label><input name="adherence" type="number" min="0" max="100" value="{adherence}">
-    <button name="action" value="save">Save Client</button><button class="secondary" name="action" value="reset">Reset</button></div>
-    <div class="card"><h2>Weekly Training Plan</h2><pre>{data['workout'] if data else 'Select a profile'}</pre></div>
-    <div class="card"><h2>Nutrition Plan (TN Context)</h2><pre>{data['diet'] if data else 'Select a profile'}</pre><div class="metric">Estimated Calories: {str(calories)+' kcal' if calories is not None else '--'}</div></div></div></form></div>'''
-    if request.method == 'POST' and request.form.get('action') == 'reset':
-        body = home.__wrapped__ if False else body
+    body = build_home_body(name, age, weight, selected, adherence, data, calories, message)
     return render_template_string(html('ACEest Fitness & Performance', body))
 
-if __name__ == '__main__': app.run(host='0.0.0.0', port=5000)
+if __name__ == '__main__': app.run(host='127.0.0.1', port=5000)
