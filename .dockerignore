@@ -1,0 +1,14 @@
+.git
+.github
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+coverage.xml
+junit.xml
+.scannerwork
+*.db
+.DS_Store
+screenshots_DevOps_assignment2
+Terminal_content_devops2

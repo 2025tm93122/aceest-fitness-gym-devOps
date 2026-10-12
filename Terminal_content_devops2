@@ -1,0 +1,964 @@
+
+    yield module
+
+    sys.modules.pop("app", None)
+
+
+PYEOFonnection.close()]NT(*) FROM metrics"" 0.0.5ired"k Info" in page
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python app.py
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+127.0.0.1 - - [12/Oct/2026 13:34:59] "GET / HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:35:09] "POST /progress HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:35:10] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [12/Oct/2026 13:35:13] "POST /progress HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:35:25] "POST /workout HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:35:40] "POST /metrics HTTP/1.1" 200 -
+^C((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytets -v
+/home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python: No module named pytets
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytest -v
+============================================= test session starts =============================================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0 -- /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/s2025tm93122/workspace/aceest-fitness-gym-devOp
+plugins: cov-7.1.0
+collected 18 items                                                                                            
+
+tests/test_app.py::test_health PASSED                                                                   [  5%]
+tests/test_app.py::test_empty_dashboard PASSED                                                          [ 11%]
+tests/test_app.py::test_create_client PASSED                                                            [ 16%]
+tests/test_app.py::test_invalid_client PASSED                                                           [ 22%]
+tests/test_app.py::test_progress PASSED                                                                 [ 27%]
+tests/test_app.py::test_progress_requires_client PASSED                                                 [ 33%]
+tests/test_app.py::test_workout PASSED                                                                  [ 38%]
+tests/test_app.py::test_workout_requires_fields PASSED                                                  [ 44%]
+tests/test_app.py::test_metrics PASSED                                                                  [ 50%]
+tests/test_app.py::test_metrics_requires_client PASSED                                                  [ 55%]
+tests/test_app.py::test_bmi_normal PASSED                                                               [ 61%]
+tests/test_app.py::test_bmi_underweight PASSED                                                          [ 66%]
+tests/test_app.py::test_bmi_overweight PASSED                                                           [ 72%]
+tests/test_app.py::test_bmi_obese PASSED                                                                [ 77%]
+tests/test_app.py::test_invalid_bmi PASSED                                                              [ 83%]
+tests/test_app.py::test_parse_int PASSED                                                                [ 88%]
+tests/test_app.py::test_parse_float PASSED                                                              [ 94%]
+tests/test_app.py::test_complete_flow PASSED                                                            [100%]
+
+============================================= 18 passed in 1.16s ==============================================
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git add .
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git commit -m "chore: upgrade ACEest Fitness application to v3.0.1 milestone"
+[main aa76b38] chore: upgrade ACEest Fitness application to v3.0.1 milestone
+ 2 files changed, 876 insertions(+), 848 deletions(-)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git tag -a v3.0.1 -m "ACEest Fitness Flask v3.0.1"
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git push
+Enumerating objects: 9, done.
+Counting objects: 100% (9/9), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (4/4), done.
+Writing objects: 100% (5/5), 5.08 KiB | 59.00 KiB/s, done.
+Total 5 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To https://github.com/2025tm93122/aceest-fitness-gym-devOps.git
+   e61ce7b..aa76b38  main -> main
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python - <<'PY'
+from pathlib import Path
+
+path = Path("app.py")
+text = path.read_text()
+
+text = text.replace(
+    "import random\nimport sqlite3",
+    "import os\nimport random\nimport sqlite3"
+)
+
+text = text.replace(
+    'DB_NAME = "aceest_fitness.db"',
+    'DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")'
+)
+
+text = text.replace(
+    'app.run(host="0.0.0.0", port=5000)',
+    'app.run(host="127.0.0.1", port=5000)'
+)
+
+path.write_text(text)
+
+print("app.py updated successfully")
+PY
+app.py updated successfully
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ cat > tests/test_app.py <<'PYEOF'
+import importlib
+from pathlib import Path
+import sys
+
+import pytest
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+@pytest.fixture()
+def app_module(tmp_path, monkeypatch):
+    database = tmp_path / "aceest_test.db"
+
+    monkeypatch.setenv(
+        "DATABASE_PATH",
+        str(database),
+    )
+
+    sys.modules.pop("app", None)
+    module = importlib.import_module("app")
+
+    module.DB_NAME = str(database)
+    module.init_db()
+
+    module.app.config.update(
+        TESTING=True,
+        SECRET_KEY="pytest-secret",
+    )
+
+    yield module
+
+    sys.modules.pop("app", None)
+
+
+@pytest.fixture()
+PYEOFssert logout_response.status_code == 302a(as_text=True))ch):e):"):
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python app.py
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+127.0.0.1 - - [12/Oct/2026 13:44:59] "POST /metrics HTTP/1.1" 404 -
+127.0.0.1 - - [12/Oct/2026 13:44:59] "GET /favicon.ico HTTP/1.1" 404 -
+127.0.0.1 - - [12/Oct/2026 13:45:02] "GET / HTTP/1.1" 302 -
+127.0.0.1 - - [12/Oct/2026 13:45:02] "GET /login HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:46:20] "POST /login HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:46:28] "POST /login HTTP/1.1" 302 -
+127.0.0.1 - - [12/Oct/2026 13:46:28] "GET /dashboard HTTP/1.1" 200 -
+^C((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytets -v
+/home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python: No module named pytets
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytest -v
+============================================= test session starts =============================================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0 -- /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/s2025tm93122/workspace/aceest-fitness-gym-devOp
+plugins: cov-7.1.0
+collected 32 items                                                                                            
+
+tests/test_app.py::test_health PASSED                                                                   [  3%]
+tests/test_app.py::test_root_redirects_to_login PASSED                                                  [  6%]
+tests/test_app.py::test_login_page PASSED                                                               [  9%]
+tests/test_app.py::test_admin_login PASSED                                                              [ 12%]
+tests/test_app.py::test_invalid_login PASSED                                                            [ 15%]
+tests/test_app.py::test_dashboard_requires_login PASSED                                                 [ 18%]
+tests/test_app.py::test_dashboard_after_login PASSED                                                    [ 21%]
+tests/test_app.py::test_root_after_login_redirects_dashboard PASSED                                     [ 25%]
+tests/test_app.py::test_logout PASSED                                                                   [ 28%]
+tests/test_app.py::test_client_requires_login PASSED                                                    [ 31%]
+tests/test_app.py::test_create_client PASSED                                                            [ 34%]
+tests/test_app.py::test_update_existing_client PASSED                                                   [ 37%]
+tests/test_app.py::test_client_name_required PASSED                                                     [ 40%]
+tests/test_app.py::test_client_invalid_numbers PASSED                                                   [ 43%]
+tests/test_app.py::test_generate_requires_login PASSED                                                  [ 46%]
+tests/test_app.py::test_generate_fat_loss_program PASSED                                                [ 50%]
+tests/test_app.py::test_generate_muscle_gain_program PASSED                                             [ 53%]
+tests/test_app.py::test_generate_full_body_program PASSED                                               [ 56%]
+tests/test_app.py::test_invalid_experience_defaults_beginner PASSED                                     [ 59%]
+tests/test_app.py::test_generate_unknown_client PASSED                                                  [ 62%]
+tests/test_app.py::test_membership_requires_login PASSED                                                [ 65%]
+tests/test_app.py::test_membership PASSED                                                               [ 68%]
+tests/test_app.py::test_membership_unknown_client PASSED                                                [ 71%]
+tests/test_app.py::test_report_requires_login PASSED                                                    [ 75%]
+tests/test_app.py::test_pdf_report FAILED                                                               [ 78%]
+tests/test_app.py::test_report_unknown_client PASSED                                                    [ 81%]
+tests/test_app.py::test_bmi_helpers_not_present_but_database_migration PASSED                           [ 84%]
+tests/test_app.py::test_ensure_column PASSED                                                            [ 87%]
+tests/test_app.py::test_pdf_escape PASSED                                                               [ 90%]
+tests/test_app.py::test_basic_pdf_fallback PASSED                                                       [ 93%]
+tests/test_app.py::test_create_report_fallback PASSED                                                   [ 96%]
+tests/test_app.py::test_complete_application_flow FAILED                                                [100%]
+
+================================================== FAILURES ===================================================
+_______________________________________________ test_pdf_report _______________________________________________
+
+self = <fpdf.fpdf.FPDF object at 0x7f7654ce3620>, text = 'Program: Fat Loss (FL) – 3 day'
+
+    def normalize_text(self, text: str) -> str:
+        """Check that text input is in the correct format/encoding"""
+        # - for TTF unicode fonts: unicode object (utf8 encoding)
+        # - for built-in fonts: string instances (encoding: latin-1, cp1252)
+        if not self.is_ttf_font and self.core_fonts_encoding:
+            try:
+>               return text.encode(self.core_fonts_encoding).decode("latin-1")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               UnicodeEncodeError: 'latin-1' codec can't encode character '\u2013' in position 23: ordinal not in range(256)
+
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:6038: UnicodeEncodeError
+
+The above exception was the direct cause of the following exception:
+
+client = <FlaskClient <Flask 'app'>>
+
+    def test_pdf_report(client):
+        login(client)
+        create_client(client)
+    
+>       response = client.get(
+            "/report?client_name=Nia"
+        )
+
+tests/test_app.py:427: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:1166: in get
+    return self.open(*args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/testing.py:235: in open
+    response = super().open(
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:1120: in open
+    response_parts = self.run_wsgi_app(request.environ, buffered=buffered)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:992: in run_wsgi_app
+    rv = run_wsgi_app(self.application, environ, buffered=buffered)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:1268: in run_wsgi_app
+    app_rv = app(environ, start_response)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:1536: in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:1514: in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:1511: in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:919: in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:917: in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:902: in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app.py:651: in report
+    pdf_bytes = create_report_pdf(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+app.py:619: in create_report_pdf
+    pdf.cell(0, 10, line, ln=True)
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:289: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/fpdf/deprecation.py:36: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:3947: in cell
+    text = self.normalize_text(text)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <fpdf.fpdf.FPDF object at 0x7f7654ce3620>, text = 'Program: Fat Loss (FL) – 3 day'
+
+    def normalize_text(self, text: str) -> str:
+        """Check that text input is in the correct format/encoding"""
+        # - for TTF unicode fonts: unicode object (utf8 encoding)
+        # - for built-in fonts: string instances (encoding: latin-1, cp1252)
+        if not self.is_ttf_font and self.core_fonts_encoding:
+            try:
+                return text.encode(self.core_fonts_encoding).decode("latin-1")
+            except UnicodeEncodeError as error:
+>               raise FPDFUnicodeEncodingException(
+                    text_index=error.start,
+                    character=text[error.start],
+                    font_name=self.font_family + self.font_style,
+                ) from error
+E               fpdf.errors.FPDFUnicodeEncodingException: Character "–" at index 23 in text is outside the range of characters supported by the font used: "helvetica". Please consider using a Unicode font.
+
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:6040: FPDFUnicodeEncodingException
+_______________________________________ test_complete_application_flow ________________________________________
+
+self = <fpdf.fpdf.FPDF object at 0x7f7654cb0140>, text = 'Program: Fat Loss (FL) – 3 day'
+
+    def normalize_text(self, text: str) -> str:
+        """Check that text input is in the correct format/encoding"""
+        # - for TTF unicode fonts: unicode object (utf8 encoding)
+        # - for built-in fonts: string instances (encoding: latin-1, cp1252)
+        if not self.is_ttf_font and self.core_fonts_encoding:
+            try:
+>               return text.encode(self.core_fonts_encoding).decode("latin-1")
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E               UnicodeEncodeError: 'latin-1' codec can't encode character '\u2013' in position 23: ordinal not in range(256)
+
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:6038: UnicodeEncodeError
+
+The above exception was the direct cause of the following exception:
+
+client = <FlaskClient <Flask 'app'>>
+
+    def test_complete_application_flow(client):
+        login(client)
+    
+        create_client(client)
+    
+        dashboard = client.get("/dashboard")
+    
+        assert dashboard.status_code == 200
+        assert "Nia" in dashboard.get_data(as_text=True)
+    
+        generated = client.post(
+            "/generate",
+            data={
+                "client_name": "Nia",
+                "experience": "beginner",
+            },
+        )
+    
+        assert generated.status_code == 200
+        assert "Conditioning" in generated.get_data(as_text=True)
+    
+        membership = client.get(
+            "/membership?client_name=Nia"
+        )
+    
+        assert membership.status_code == 200
+        assert "2027-01-01" in membership.get_data(as_text=True)
+    
+>       report = client.get(
+            "/report?client_name=Nia"
+        )
+
+tests/test_app.py:576: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:1166: in get
+    return self.open(*args, **kw)
+           ^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/testing.py:235: in open
+    response = super().open(
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:1120: in open
+    response_parts = self.run_wsgi_app(request.environ, buffered=buffered)
+                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:992: in run_wsgi_app
+    rv = run_wsgi_app(self.application, environ, buffered=buffered)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/werkzeug/test.py:1268: in run_wsgi_app
+    app_rv = app(environ, start_response)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:1536: in __call__
+    return self.wsgi_app(environ, start_response)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:1514: in wsgi_app
+    response = self.handle_exception(e)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:1511: in wsgi_app
+    response = self.full_dispatch_request()
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:919: in full_dispatch_request
+    rv = self.handle_user_exception(e)
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:917: in full_dispatch_request
+    rv = self.dispatch_request()
+         ^^^^^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/flask/app.py:902: in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+app.py:651: in report
+    pdf_bytes = create_report_pdf(client)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^
+app.py:619: in create_report_pdf
+    pdf.cell(0, 10, line, ln=True)
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:289: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/fpdf/deprecation.py:36: in wrapper
+    return fn(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:3947: in cell
+    text = self.normalize_text(text)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <fpdf.fpdf.FPDF object at 0x7f7654cb0140>, text = 'Program: Fat Loss (FL) – 3 day'
+
+    def normalize_text(self, text: str) -> str:
+        """Check that text input is in the correct format/encoding"""
+        # - for TTF unicode fonts: unicode object (utf8 encoding)
+        # - for built-in fonts: string instances (encoding: latin-1, cp1252)
+        if not self.is_ttf_font and self.core_fonts_encoding:
+            try:
+                return text.encode(self.core_fonts_encoding).decode("latin-1")
+            except UnicodeEncodeError as error:
+>               raise FPDFUnicodeEncodingException(
+                    text_index=error.start,
+                    character=text[error.start],
+                    font_name=self.font_family + self.font_style,
+                ) from error
+E               fpdf.errors.FPDFUnicodeEncodingException: Character "–" at index 23 in text is outside the range of characters supported by the font used: "helvetica". Please consider using a Unicode font.
+
+.venv/lib64/python3.12/site-packages/fpdf/fpdf.py:6040: FPDFUnicodeEncodingException
+============================================== warnings summary ===============================================
+tests/test_app.py::test_pdf_report
+tests/test_app.py::test_complete_application_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:615: DeprecationWarning: Substituting font arial by core font helvetica - This is deprecated since v2.7.8, and will soon be removed
+    pdf.set_font("Arial", "B", 16)
+
+tests/test_app.py::test_pdf_report
+tests/test_app.py::test_complete_application_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:616: DeprecationWarning: The parameter "ln" is deprecated since v2.5.2. Instead of ln=True use new_x=XPos.LMARGIN, new_y=YPos.NEXT.
+    pdf.cell(0, 10, f"Client Report - {client['name']}", ln=True, align="C")
+
+tests/test_app.py::test_pdf_report
+tests/test_app.py::test_complete_application_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:617: DeprecationWarning: Substituting font arial by core font helvetica - This is deprecated since v2.7.8, and will soon be removed
+    pdf.set_font("Arial", "", 12)
+
+tests/test_app.py: 10 warnings
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:619: DeprecationWarning: The parameter "ln" is deprecated since v2.5.2. Instead of ln=True use new_x=XPos.LMARGIN, new_y=YPos.NEXT.
+    pdf.cell(0, 10, line, ln=True)
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================================== short test summary info ===========================================
+FAILED tests/test_app.py::test_pdf_report - fpdf.errors.FPDFUnicodeEncodingException: Character "–" at index 23 in text is outside the range of charac...
+FAILED tests/test_app.py::test_complete_application_flow - fpdf.errors.FPDFUnicodeEncodingException: Character "–" at index 23 in text is outside the range of charac...
+================================== 2 failed, 30 passed, 16 warnings in 3.38s ==================================
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python - <<'PY'
+from pathlib import Path
+
+path = Path("app.py")
+text = path.read_text()
+
+old = '''    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", "B", 16)
+    pdf.cell(0, 10, f"Client Report - {client['name']}", ln=True, align="C")
+    pdf.set_font("Arial", "", 12)
+    for line in report_lines:
+        pdf.cell(0, 10, line, ln=True)
+
+    result = pdf.output(dest="S")'''
+
+new = '''    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Helvetica", "B", 16)
+
+    safe_title = pdf_escape(
+        f"Client Report - {client['name']}"
+    )
+
+    pdf.cell(
+        0,
+        10,
+        safe_title,
+        new_x="LMARGIN",
+        new_y="NEXT",
+        align="C",
+    )
+
+    pdf.set_font("Helvetica", "", 12)
+
+    for line in report_lines:
+        safe_line = pdf_escape(line)
+
+        pdf.cell(
+            0,
+PYint("PDF generation fixed successfully.")app.py was not changed."
+PDF generation fixed successfully.
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python - <<'PY'
+from pathlib import Path
+
+path = Path("app.py")
+text = path.read_text()
+
+old = '''def pdf_escape(value):
+    """Escape text for the tiny built-in PDF fallback."""
+    text = str(value).replace("\\\\", "\\\\\\\\").replace("(", "\\\\(").replace(")", "\\\\)")
+    # The fallback uses a basic PDF font, so keep output Latin-1 compatible.
+    return text.encode("latin-1", "replace").decode("latin-1")'''
+
+new = '''def pdf_escape(value):
+    """Return PDF-safe text compatible with built-in PDF fonts."""
+    text = str(value)
+
+    # Normalize common Unicode punctuation unsupported by
+    # built-in Helvetica.
+    text = (
+        text.replace("–", "-")
+        .replace("—", "-")
+        .replace("’", "'")
+        .replace("‘", "'")
+        .replace("“", '"')
+        .replace("”", '"')
+    )
+
+    # Keep the fallback PDF content Latin-1 compatible.
+    text = text.encode("latin-1", "replace").decode("latin-1")
+
+    # Escape PDF control characters used by the fallback writer.
+    return (
+        text.replace("\\\\", "\\\\\\\\")
+        .replace("(", "\\\\(")
+        .replace(")", "\\\\)")
+    )'''
+
+if old not in text:
+    raise SystemExit(
+        "Expected pdf_escape function was not found. app.py was not changed."
+PYint("pdf_escape updated successfully.")
+pdf_escape updated successfully.
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytest -v
+============================================= test session starts =============================================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0 -- /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/s2025tm93122/workspace/aceest-fitness-gym-devOp
+plugins: cov-7.1.0
+collected 32 items                                                                                            
+
+tests/test_app.py::test_health PASSED                                                                   [  3%]
+tests/test_app.py::test_root_redirects_to_login PASSED                                                  [  6%]
+tests/test_app.py::test_login_page PASSED                                                               [  9%]
+tests/test_app.py::test_admin_login PASSED                                                              [ 12%]
+tests/test_app.py::test_invalid_login PASSED                                                            [ 15%]
+tests/test_app.py::test_dashboard_requires_login PASSED                                                 [ 18%]
+tests/test_app.py::test_dashboard_after_login PASSED                                                    [ 21%]
+tests/test_app.py::test_root_after_login_redirects_dashboard PASSED                                     [ 25%]
+tests/test_app.py::test_logout PASSED                                                                   [ 28%]
+tests/test_app.py::test_client_requires_login PASSED                                                    [ 31%]
+tests/test_app.py::test_create_client PASSED                                                            [ 34%]
+tests/test_app.py::test_update_existing_client PASSED                                                   [ 37%]
+tests/test_app.py::test_client_name_required PASSED                                                     [ 40%]
+tests/test_app.py::test_client_invalid_numbers PASSED                                                   [ 43%]
+tests/test_app.py::test_generate_requires_login PASSED                                                  [ 46%]
+tests/test_app.py::test_generate_fat_loss_program PASSED                                                [ 50%]
+tests/test_app.py::test_generate_muscle_gain_program PASSED                                             [ 53%]
+tests/test_app.py::test_generate_full_body_program PASSED                                               [ 56%]
+tests/test_app.py::test_invalid_experience_defaults_beginner PASSED                                     [ 59%]
+tests/test_app.py::test_generate_unknown_client PASSED                                                  [ 62%]
+tests/test_app.py::test_membership_requires_login PASSED                                                [ 65%]
+tests/test_app.py::test_membership PASSED                                                               [ 68%]
+tests/test_app.py::test_membership_unknown_client PASSED                                                [ 71%]
+tests/test_app.py::test_report_requires_login PASSED                                                    [ 75%]
+tests/test_app.py::test_pdf_report PASSED                                                               [ 78%]
+tests/test_app.py::test_report_unknown_client PASSED                                                    [ 81%]
+tests/test_app.py::test_bmi_helpers_not_present_but_database_migration PASSED                           [ 84%]
+tests/test_app.py::test_ensure_column PASSED                                                            [ 87%]
+tests/test_app.py::test_pdf_escape PASSED                                                               [ 90%]
+tests/test_app.py::test_basic_pdf_fallback PASSED                                                       [ 93%]
+tests/test_app.py::test_create_report_fallback PASSED                                                   [ 96%]
+tests/test_app.py::test_complete_application_flow PASSED                                                [100%]
+
+============================================== warnings summary ===============================================
+tests/test_app.py::test_pdf_report
+tests/test_app.py::test_complete_application_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:662: DeprecationWarning: "dest" parameter is deprecated since v2.2.0 and will be removed in a future release
+    result = pdf.output(dest="S")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================= 32 passed, 2 warnings in 2.31s ========================================
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git add .
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git commit -m "feat: upgrade ACEest Fitness application to v3.1.2 with authentication AI programs and PDF reports"
+[main dbc15ae] feat: upgrade ACEest Fitness application to v3.1.2 with authentication AI programs and PDF reports
+ 2 files changed, 888 insertions(+), 852 deletions(-)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git tag -a v3.1.2 -m "ACEest Fitness Flask v3.1.2"
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git push
+Enumerating objects: 9, done.
+Counting objects: 100% (9/9), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (4/4), done.
+Writing objects: 100% (5/5), 8.47 KiB | 154.00 KiB/s, done.
+Total 5 (delta 1), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (1/1), completed with 1 local object.
+To https://github.com/2025tm93122/aceest-fitness-gym-devOps.git
+   aa76b38..dbc15ae  main -> main
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python - <<'PY'
+from pathlib import Path                                           python - <<'PY'
+from pathlib import Path
+path = Path("app.py")
+path = Path("app.py")()
+text = path.read_text()
+# Replace random import with secrets.
+# Replace random import with secrets.
+text = text.replace(",
+    "import random\n",
+    "import secrets\n"
+)
+# Add a secure random generator after the Flask configuration.
+# Add a secure random generator after the Flask configuration.tness.db")\n'
+marker = 'DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")\n'
+if "SECURE_RANDOM = secrets.SystemRandom()" not in text:
+if "SECURE_RANDOM = secrets.SystemRandom()" not in text:
+    text = text.replace(
+        marker,+ 'SECURE_RANDOM = secrets.SystemRandom()\n'
+        marker + 'SECURE_RANDOM = secrets.SystemRandom()\n'
+    )
+# Replace all pseudorandom calls used for workout generation.
+# Replace all pseudorandom calls used for workout generation.
+text = text.replace(XERCISES[focus], k=exercises_per_day)",
+    "random.sample(EXERCISES[focus], k=exercises_per_day)",_day)"
+    "SECURE_RANDOM.sample(EXERCISES[focus], k=exercises_per_day)"
+)
+text = text.replace(
+text = text.replace(*settings['sets'])",
+    "random.randint(*settings['sets'])",ts'])"
+    "SECURE_RANDOM.randint(*settings['sets'])"
+)
+text = text.replace(
+text = text.replace(*settings['reps'])",
+    "random.randint(*settings['reps'])",ps'])"
+    "SECURE_RANDOM.randint(*settings['reps'])"
+)
+path.write_text(text)
+path.write_text(text)
+print("app.py updated successfully")
+print("app.py updated successfully")
+PY
+app.py updated successfully
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ grep -nE "random\.|SECURE_RANDOM|import (random|secrets)" app.py
+12:import secrets
+28:SECURE_RANDOM = secrets.SystemRandom()
+502:        exercises = SECURE_RANDOM.sample(EXERCISES[focus], k=exercises_per_day)
+506:                f"{SECURE_RANDOM.randint(*settings['sets'])} sets x "
+507:                f"{SECURE_RANDOM.randint(*settings['reps'])} reps"
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ tail -n 5 app.py
+    )
+
+
+if __name__ == "__main__":
+    app.run(host="127.0.0.1", port=5000)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git status
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   app.py
+
+no changes added to commit (use "git add" and/or "git commit -a")
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python app.py
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+127.0.0.1 - - [12/Oct/2026 13:56:49] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:56:53] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 13:56:55] "GET /dashboard HTTP/1.1" 200 -
+^C((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git add .
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git commit -m "fixing app.py"
+[main d81bc99] fixing app.py
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git push
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 365 bytes | 9.00 KiB/s, done.
+Total 3 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To https://github.com/2025tm93122/aceest-fitness-gym-devOps.git
+   dbc15ae..d81bc99  main -> main
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python - <<'PY'
+from pathlib import Path
+
+path = Path("app.py")
+text = path.read_text()
+
+# ---------------------------------------------------------
+# 1. Use isolated DATABASE_PATH for Jenkins/Pytest
+# ---------------------------------------------------------
+
+if "import os\n" not in text:
+    text = text.replace(
+        "from io import BytesIO\n",
+        "from io import BytesIO\nimport os\n",
+    )
+
+text = text.replace(
+    "import random\n",
+    "import secrets\n",
+)
+
+text = text.replace(
+    'DB_NAME = "aceest_fitness.db"',
+    'DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")',
+)
+
+# ---------------------------------------------------------
+# 2. Secure random generator for SonarQube S2245
+# ---------------------------------------------------------
+
+db_line = 'DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")'
+
+if "SECURE_RANDOM = secrets.SystemRandom()" not in text:
+    text = text.replace(
+        db_line,
+        db_line + "\nSECURE_RANDOM = secrets.SystemRandom()",
+    )
+
+text = text.replace(
+    "random.choice(list(PROGRAM_TEMPLATES.keys()))",
+PYint("app.py updated successfully")5000)',----------------}"), ln=True)
+app.py updated successfully
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python app.py
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+127.0.0.1 - - [12/Oct/2026 14:04:03] "GET /dashboard HTTP/1.1" 200 -
+^C((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytest -v
+============================================= test session starts =============================================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0 -- /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/s2025tm93122/workspace/aceest-fitness-gym-devOp
+plugins: cov-7.1.0
+collected 4 items                                                                                             
+
+tests/test_app.py::test_health PASSED                                                                   [ 25%]
+tests/test_app.py::test_admin_login PASSED                                                              [ 50%]
+tests/test_app.py::test_client_membership_workout_program_and_pdf_flow PASSED                           [ 75%]
+tests/test_app.py::test_unauthenticated_dashboard_redirects_to_login PASSED                             [100%]
+
+============================================== warnings summary ===============================================
+tests/test_app.py::test_client_membership_workout_program_and_pdf_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:685: DeprecationWarning: "dest" parameter is deprecated since v2.2.0 and will be removed in a future release
+    result = pdf.output(dest="S")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================== 4 passed, 1 warning in 1.54s =========================================
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git add .
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git commit -m "feat: upgrade ACEest Fitness application to v3.2.4 with membership and workout management"
+[main 257d8a7] feat: upgrade ACEest Fitness application to v3.2.4 with membership and workout management
+ 2 files changed, 280 insertions(+), 738 deletions(-)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git tag -a v3.2.4 -m "ACEest Fitness Flask v3.2.4"
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git push
+Enumerating objects: 9, done.
+Counting objects: 100% (9/9), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (4/4), done.
+Writing objects: 100% (5/5), 4.04 KiB | 88.00 KiB/s, done.
+Total 5 (delta 3), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (3/3), completed with 3 local objects.
+To https://github.com/2025tm93122/aceest-fitness-gym-devOps.git
+   d81bc99..257d8a7  main -> main
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python - <<'PY'
+from pathlib import Path
+
+path = Path("app.py")
+text = path.read_text()
+
+# Add reusable program-name constants before PROGRAM_TEMPLATES.
+old = '''PROGRAM_TEMPLATES = {
+    "Fat Loss": ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
+    "Muscle Gain": ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
+    "Beginner": ["Full Body 3x/week", "Light Strength + Mobility"],
+}'''
+
+new = '''FAT_LOSS = "Fat Loss"
+MUSCLE_GAIN = "Muscle Gain"
+BEGINNER = "Beginner"
+
+PROGRAM_TEMPLATES = {
+    FAT_LOSS: ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
+    MUSCLE_GAIN: ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
+    BEGINNER: ["Full Body 3x/week", "Light Strength + Mobility"],
+}'''
+
+if old not in text:
+    raise SystemExit("PROGRAM_TEMPLATES block not found. No changes made.")
+
+text = text.replace(old, new)
+
+# Replace repeated program-name literals in program-selection logic.
+text = text.replace(
+    'if "Fat Loss" in current_program:',
+    'if FAT_LOSS in current_program:'
+)
+
+text = text.replace(
+    'program_type = "Fat Loss"',
+    'program_type = FAT_LOSS'
+)
+
+text = text.replace(
+PYint("SonarQube duplicated-literal issue fixed.")
+SonarQube duplicated-literal issue fixed.
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ grep -nE 'FAT_LOSS|MUSCLE_GAIN|BEGINNER|PROGRAM_TEMPLATES' app.py
+30:FAT_LOSS = "Fat Loss"
+31:MUSCLE_GAIN = "Muscle Gain"
+32:BEGINNER = "Beginner"
+34:PROGRAM_TEMPLATES = {
+35:    FAT_LOSS: ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
+36:    MUSCLE_GAIN: ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
+37:    BEGINNER: ["Full Body 3x/week", "Light Strength + Mobility"],
+517:    if FAT_LOSS in current_program:
+518:        program_type = FAT_LOSS
+520:        program_type = MUSCLE_GAIN
+521:    elif BEGINNER in current_program:
+522:        program_type = BEGINNER
+525:        program_type = SECURE_RANDOM.choice(list(PROGRAM_TEMPLATES.keys()))
+527:    program_detail = SECURE_RANDOM.choice(PROGRAM_TEMPLATES[program_type])
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python app.py
+ * Serving Flask app 'app'
+ * Debug mode: off
+WARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.
+ * Running on http://127.0.0.1:5000
+Press CTRL+C to quit
+127.0.0.1 - - [12/Oct/2026 14:10:02] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 14:10:07] "GET / HTTP/1.1" 302 -
+127.0.0.1 - - [12/Oct/2026 14:10:07] "GET /dashboard HTTP/1.1" 200 -
+127.0.0.1 - - [12/Oct/2026 14:10:07] "GET /favicon.ico HTTP/1.1" 404 -
+^C((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytest -v
+============================================= test session starts =============================================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0 -- /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/s2025tm93122/workspace/aceest-fitness-gym-devOp
+plugins: cov-7.1.0
+collected 4 items                                                                                             
+
+tests/test_app.py::test_health PASSED                                                                   [ 25%]
+tests/test_app.py::test_admin_login PASSED                                                              [ 50%]
+tests/test_app.py::test_client_membership_workout_program_and_pdf_flow PASSED                           [ 75%]
+tests/test_app.py::test_unauthenticated_dashboard_redirects_to_login PASSED                             [100%]
+
+============================================== warnings summary ===============================================
+tests/test_app.py::test_client_membership_workout_program_and_pdf_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:689: DeprecationWarning: "dest" parameter is deprecated since v2.2.0 and will be removed in a future release
+    result = pdf.output(dest="S")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================== 4 passed, 1 warning in 1.26s =========================================
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git add .
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git commit -m "Updated app.py filr"
+[main 63fb051] Updated app.py filr
+ 1 file changed, 12 insertions(+), 8 deletions(-)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git tag -a v3.2.4 -m "ACEest Fitness Flask v3.2.4"
+fatal: tag 'v3.2.4' already exists
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git push
+Enumerating objects: 5, done.
+Counting objects: 100% (5/5), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (3/3), 426 bytes | 8.00 KiB/s, done.
+Total 3 (delta 2), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (2/2), completed with 2 local objects.
+To https://github.com/2025tm93122/aceest-fitness-gym-devOps.git
+   257d8a7..63fb051  main -> main
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ cat > tests/test_app.py <<'PYEOF'
+import importlib
+from pathlib import Path
+import sys
+
+import pytest
+
+
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
+
+@pytest.fixture()
+def app_module(tmp_path, monkeypatch):
+    """Load app.py with a completely isolated SQLite test database."""
+
+    database = tmp_path / "aceest_test.db"
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("DATABASE_PATH", str(database))
+
+    sys.modules.pop("app", None)
+
+    module = importlib.import_module("app")
+
+    module.DB_NAME = str(database)
+    module.init_db()
+
+    module.app.config.update(
+        TESTING=True,
+        SECRET_KEY="pytest-secret",
+    )
+
+    yield module
+
+    sys.modules.pop("app", None)
+
+
+PYEOFssert logout_response.status_code == 302==============
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ python -m pytest -v
+============================================= test session starts =============================================
+platform linux -- Python 3.12.15, pytest-8.4.2, pluggy-1.6.0 -- /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /home/s2025tm93122/workspace/aceest-fitness-gym-devOp
+plugins: cov-7.1.0
+collected 39 items                                                                                            
+
+tests/test_app.py::test_health PASSED                                                                   [  2%]
+tests/test_app.py::test_login_page PASSED                                                               [  5%]
+tests/test_app.py::test_valid_login PASSED                                                              [  7%]
+tests/test_app.py::test_invalid_login PASSED                                                            [ 10%]
+tests/test_app.py::test_root_without_login PASSED                                                       [ 12%]
+tests/test_app.py::test_root_when_logged_in PASSED                                                      [ 15%]
+tests/test_app.py::test_dashboard_requires_login PASSED                                                 [ 17%]
+tests/test_app.py::test_dashboard_after_login PASSED                                                    [ 20%]
+tests/test_app.py::test_logout PASSED                                                                   [ 23%]
+tests/test_app.py::test_client_requires_login PASSED                                                    [ 25%]
+tests/test_app.py::test_create_client PASSED                                                            [ 28%]
+tests/test_app.py::test_client_without_weight PASSED                                                    [ 30%]
+tests/test_app.py::test_update_existing_client PASSED                                                   [ 33%]
+tests/test_app.py::test_client_name_required PASSED                                                     [ 35%]
+tests/test_app.py::test_invalid_client_numbers PASSED                                                   [ 38%]
+tests/test_app.py::test_invalid_target_number PASSED                                                    [ 41%]
+tests/test_app.py::test_workout_requires_login PASSED                                                   [ 43%]
+tests/test_app.py::test_add_workout PASSED                                                              [ 46%]
+tests/test_app.py::test_invalid_workout_duration PASSED                                                 [ 48%]
+tests/test_app.py::test_generate_requires_login PASSED                                                  [ 51%]
+tests/test_app.py::test_generate_fat_loss PASSED                                                        [ 53%]
+tests/test_app.py::test_generate_muscle_gain PASSED                                                     [ 56%]
+tests/test_app.py::test_generate_beginner PASSED                                                        [ 58%]
+tests/test_app.py::test_generate_unknown_program PASSED                                                 [ 61%]
+tests/test_app.py::test_generate_unknown_client PASSED                                                  [ 64%]
+tests/test_app.py::test_membership_requires_login PASSED                                                [ 66%]
+tests/test_app.py::test_membership PASSED                                                               [ 69%]
+tests/test_app.py::test_membership_with_empty_values PASSED                                             [ 71%]
+tests/test_app.py::test_membership_unknown_client PASSED                                                [ 74%]
+tests/test_app.py::test_report_requires_login PASSED                                                    [ 76%]
+tests/test_app.py::test_report_unknown_client PASSED                                                    [ 79%]
+tests/test_app.py::test_pdf_report PASSED                                                               [ 82%]
+tests/test_app.py::test_pdf_fallback PASSED                                                             [ 84%]
+tests/test_app.py::test_build_basic_pdf PASSED                                                          [ 87%]
+tests/test_app.py::test_pdf_escape PASSED                                                               [ 89%]
+tests/test_app.py::test_column_names PASSED                                                             [ 92%]
+tests/test_app.py::test_ensure_column PASSED                                                            [ 94%]
+tests/test_app.py::test_dashboard_displays_saved_data PASSED                                            [ 97%]
+tests/test_app.py::test_complete_application_flow PASSED                                                [100%]
+
+============================================== warnings summary ===============================================
+tests/test_app.py::test_pdf_report
+tests/test_app.py::test_complete_application_flow
+  /home/s2025tm93122/workspace/aceest-fitness-gym-devOp/app.py:689: DeprecationWarning: "dest" parameter is deprecated since v2.2.0 and will be removed in a future release
+    result = pdf.output(dest="S")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================= 39 passed, 2 warnings in 2.73s ========================================
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git add .
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git commit -m "Adding the etst coverage in the final commit"
+[main 5dfdb4b] Adding the etst coverage in the final commit
+ 1 file changed, 755 insertions(+), 36 deletions(-)
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ git push
+Enumerating objects: 7, done.
+Counting objects: 100% (7/7), done.
+Delta compression using up to 2 threads
+Compressing objects: 100% (3/3), done.
+Writing objects: 100% (4/4), 3.11 KiB | 61.00 KiB/s, done.
+Total 4 (delta 1), reused 0 (delta 0), pack-reused 0
+remote: Resolving deltas: 100% (1/1), completed with 1 local object.
+To https://github.com/2025tm93122/aceest-fitness-gym-devOps.git
+   63fb051..5dfdb4b  main -> main
+((.venv) ) [s2025tm93122@ip-10-3-20-253 aceest-fitness-gym-devOp]$ 
