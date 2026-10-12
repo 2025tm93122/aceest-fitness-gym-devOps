@@ -13,19 +13,18 @@ if str(PROJECT_ROOT) not in sys.path:
 
 @pytest.fixture()
 def app_module(tmp_path, monkeypatch):
-    """Load app.py with an isolated SQLite database."""
+    database = tmp_path / "aceest_test.db"
 
-    monkeypatch.chdir(tmp_path)
     monkeypatch.setenv(
         "DATABASE_PATH",
-        str(tmp_path / "aceest_test.db"),
+        str(database),
     )
 
     sys.modules.pop("app", None)
 
     module = importlib.import_module("app")
 
-    module.DB_NAME = str(tmp_path / "aceest_test.db")
+    module.DB_NAME = str(database)
     module.init_db()
 
     module.app.config.update(
@@ -43,179 +42,9 @@ def client(app_module):
     return app_module.app.test_client()
 
 
-def create_client(client, name="Nia"):
+def create_client(client):
     return client.post(
-        "/api/clients",
-        json={
-            "name": name,
-            "age": 25,
-            "height": 165,
-            "weight": 60,
-            "program": "Fat Loss (FL) – 3 day",
-            "target_weight": 55,
-            "target_adherence": 90,
-        },
-    )
-
-
-# ---------------------------------------------------------
-# Health
-# ---------------------------------------------------------
-
-def test_health(client):
-    response = client.get("/health")
-
-    assert response.status_code == 200
-    assert response.get_json() == {"status": "healthy"}
-
-
-# ---------------------------------------------------------
-# Dashboard
-# ---------------------------------------------------------
-
-def test_dashboard_empty(client):
-    response = client.get("/")
-
-    assert response.status_code == 200
-
-    page = response.get_data(as_text=True)
-
-    assert "ACEest Functional Fitness System" in page
-    assert "Client Management" in page
-    assert "Weekly Progress" in page
-    assert "Workout Logging" in page
-    assert "Body Metrics" in page
-    assert "BMI" in page
-    assert "No progress data" in page
-
-
-def test_dashboard_with_data(client):
-    create_client(client)
-
-    client.post(
-        "/progress",
-        json={
-            "client_name": "Nia",
-            "adherence": 87,
-        },
-    )
-
-    client.post(
-        "/workout",
-        json={
-            "client_name": "Nia",
-            "date": "2026-10-12",
-            "workout_type": "Strength",
-            "duration_min": 60,
-            "notes": "Good session",
-            "exercise_name": "Squat",
-            "sets": 3,
-            "reps": 10,
-            "exercise_weight": 40,
-        },
-    )
-
-    client.post(
-        "/metrics",
-        json={
-            "client_name": "Nia",
-            "date": "2026-10-12",
-            "weight": 60,
-            "waist": 75,
-            "bodyfat": 22,
-        },
-    )
-
-    response = client.get("/")
-
-    assert response.status_code == 200
-
-    page = response.get_data(as_text=True)
-
-    assert "Nia" in page
-    assert "87%" in page
-    assert "Strength" in page
-    assert "Good session" in page
-    assert "75.0" in page
-
-
-# ---------------------------------------------------------
-# Client API
-# ---------------------------------------------------------
-
-def test_create_and_fetch_client(client):
-    response = create_client(client)
-
-    assert response.status_code == 201
-
-    data = response.get_json()
-
-    assert data["name"] == "Nia"
-    assert data["age"] == 25
-    assert data["height"] == 165
-    assert data["weight"] == 60
-    assert data["calories"] == 1320
-    assert data["target_weight"] == 55
-    assert data["target_adherence"] == 90
-
-    fetched = client.get("/api/clients/Nia")
-
-    assert fetched.status_code == 200
-    assert fetched.get_json()["name"] == "Nia"
-
-
-def test_list_clients(client):
-    create_client(client)
-
-    response = client.get("/api/clients")
-
-    assert response.status_code == 200
-
-    data = response.get_json()
-
-    assert len(data) == 1
-    assert data[0]["name"] == "Nia"
-
-
-def test_missing_client_returns_404(client):
-    response = client.get("/api/clients/Unknown")
-
-    assert response.status_code == 404
-    assert response.get_json()["error"] == "Client not found"
-
-
-def test_missing_name_rejected(client):
-    response = client.post(
-        "/api/clients",
-        json={
-            "program": "Fat Loss (FL) – 3 day",
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.get_json()["error"] == "Name is required"
-
-
-def test_invalid_program_rejected(client):
-    response = client.post(
-        "/api/clients",
-        json={
-            "name": "Nia",
-            "program": "Unknown",
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.get_json()["error"] == "Valid program is required"
-
-
-# ---------------------------------------------------------
-# HTML Client Form
-# ---------------------------------------------------------
-
-def test_save_client_form(client):
-    response = client.post(
-        "/",
+        "/client",
         data={
             "name": "Nia",
             "age": "25",
@@ -227,17 +56,62 @@ def test_save_client_form(client):
         },
     )
 
-    assert response.status_code == 302
 
+def test_health(client):
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "status": "healthy"
+    }
+
+
+def test_empty_dashboard(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Nia" in response.get_data(as_text=True)
+
+    page = response.get_data(as_text=True)
+
+    assert "ACEest Functional Fitness System" in page
+    assert "Client Management" in page
+    assert "Weekly Progress" in page
+    assert "Workout Logging" in page
+    assert "Body Metrics" in page
+    assert "BMI &amp; Risk Info" in page or "BMI & Risk Info" in page
 
 
-def test_invalid_client_form(client):
+def test_create_client(client, app_module):
+    response = create_client(client)
+
+    assert response.status_code == 200
+
+    page = response.get_data(as_text=True)
+
+    assert "Nia" in page
+    assert "1320" in page
+
+    connection = app_module.conn()
+
+    row = connection.execute(
+        "SELECT * FROM clients WHERE name=?",
+        ("Nia",),
+    ).fetchone()
+
+    connection.close()
+
+    assert row is not None
+    assert row["age"] == 25
+    assert row["height"] == 165
+    assert row["weight"] == 60
+    assert row["calories"] == 1320
+    assert row["target_weight"] == 55
+    assert row["target_adherence"] == 90
+
+
+def test_invalid_client(client):
     response = client.post(
-        "/",
+        "/client",
         data={
             "name": "",
             "program": "Unknown",
@@ -245,122 +119,102 @@ def test_invalid_client_form(client):
     )
 
     assert response.status_code == 400
-    assert "Name and a valid program are required" in response.get_data(
-        as_text=True
+
+    assert (
+        "Name and a valid program are required"
+        in response.get_data(as_text=True)
     )
 
 
-# ---------------------------------------------------------
-# Progress
-# ---------------------------------------------------------
-
-def test_progress_api(client):
-    create_client(client)
-
-    response = client.post(
-        "/progress",
-        json={
-            "client_name": "Nia",
-            "adherence": 87,
-        },
-    )
-
-    assert response.status_code == 201
-
-    data = response.get_json()
-
-    assert data["message"] == "Weekly progress logged"
-    assert data["client_name"] == "Nia"
-    assert data["adherence"] == 87
-
-    progress = client.get("/api/progress/Nia")
-
-    assert progress.status_code == 200
-    assert progress.get_json()[0]["adherence"] == 87
-
-
-def test_progress_missing_client_name(client):
-    response = client.post(
-        "/progress",
-        json={
-            "adherence": 80,
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.get_json()["error"] == "client_name is required"
-
-
-def test_progress_form_redirect(client):
+def test_progress(client, app_module):
     create_client(client)
 
     response = client.post(
         "/progress",
         data={
             "client_name": "Nia",
+            "adherence": "85",
+        },
+    )
+
+    assert response.status_code == 200
+    assert "85%" in response.get_data(as_text=True)
+
+    connection = app_module.conn()
+
+    row = connection.execute(
+        """
+        SELECT adherence
+        FROM progress
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert row["adherence"] == 85
+
+
+def test_progress_requires_client(client):
+    response = client.post(
+        "/progress",
+        data={
+            "client_name": "",
             "adherence": "80",
         },
     )
 
-    assert response.status_code == 302
+    assert response.status_code == 400
+
+    assert (
+        response.get_json()["error"]
+        == "client_name is required"
+    )
 
 
-# ---------------------------------------------------------
-# Workout
-# ---------------------------------------------------------
-
-def test_workout_api(client):
+def test_workout(client, app_module):
     create_client(client)
 
     response = client.post(
         "/workout",
-        json={
+        data={
             "client_name": "Nia",
             "date": "2026-10-12",
             "workout_type": "Strength",
-            "duration_min": 60,
-            "notes": "Good session",
-            "exercise_name": "Squat",
-            "sets": 3,
-            "reps": 10,
-            "exercise_weight": 40,
+            "duration_min": "60",
+            "notes": "Squats",
         },
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
 
-    data = response.get_json()
+    page = response.get_data(as_text=True)
 
-    assert data["message"] == "Workout logged successfully"
-    assert data["workout_id"] > 0
+    assert "Strength" in page
+    assert "Squats" in page
 
-    workouts = client.get("/api/workouts/Nia")
+    connection = app_module.conn()
 
-    assert workouts.status_code == 200
-    assert workouts.get_json()[0]["workout_type"] == "Strength"
+    row = connection.execute(
+        """
+        SELECT *
+        FROM workouts
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert row["client_name"] == "Nia"
+    assert row["duration_min"] == 60
 
 
-def test_workout_without_exercise(client):
-    create_client(client)
-
+def test_workout_requires_fields(client):
     response = client.post(
         "/workout",
-        json={
-            "client_name": "Nia",
-            "date": "2026-10-12",
-            "workout_type": "Mobility",
-            "duration_min": 30,
-            "notes": "",
-        },
-    )
-
-    assert response.status_code == 201
-
-
-def test_invalid_workout(client):
-    response = client.post(
-        "/workout",
-        json={
+        data={
             "client_name": "",
             "workout_type": "",
         },
@@ -374,69 +228,7 @@ def test_invalid_workout(client):
     )
 
 
-def test_workout_form_redirect(client):
-    create_client(client)
-
-    response = client.post(
-        "/workout",
-        data={
-            "client_name": "Nia",
-            "date": "2026-10-12",
-            "workout_type": "Strength",
-            "duration_min": "45",
-            "notes": "Form workout",
-            "exercise_name": "",
-        },
-    )
-
-    assert response.status_code == 302
-
-
-# ---------------------------------------------------------
-# Metrics
-# ---------------------------------------------------------
-
-def test_metrics_api(client):
-    create_client(client)
-
-    response = client.post(
-        "/metrics",
-        json={
-            "client_name": "Nia",
-            "date": "2026-10-12",
-            "weight": 60,
-            "waist": 75,
-            "bodyfat": 22,
-        },
-    )
-
-    assert response.status_code == 201
-
-    data = response.get_json()
-
-    assert data["message"] == "Metrics logged successfully"
-
-    metrics = client.get("/api/metrics/Nia")
-
-    assert metrics.status_code == 200
-    assert metrics.get_json()[0]["weight"] == 60.0
-    assert metrics.get_json()[0]["waist"] == 75.0
-    assert metrics.get_json()[0]["bodyfat"] == 22.0
-
-
-def test_metrics_missing_client(client):
-    response = client.post(
-        "/metrics",
-        json={
-            "weight": 60,
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.get_json()["error"] == "client_name is required"
-
-
-def test_metrics_form_redirect(client):
+def test_metrics(client, app_module):
     create_client(client)
 
     response = client.post(
@@ -450,116 +242,43 @@ def test_metrics_form_redirect(client):
         },
     )
 
-    assert response.status_code == 302
-
-
-# ---------------------------------------------------------
-# BMI
-# ---------------------------------------------------------
-
-def test_calculate_bmi_normal(app_module):
-    result = app_module.calculate_bmi(165, 60)
-
-    assert result["bmi"] == 22.0
-    assert result["category"] == "Normal"
-
-
-def test_calculate_bmi_underweight(app_module):
-    result = app_module.calculate_bmi(180, 50)
-
-    assert result["category"] == "Underweight"
-
-
-def test_calculate_bmi_overweight(app_module):
-    result = app_module.calculate_bmi(170, 80)
-
-    assert result["category"] == "Overweight"
-
-
-def test_calculate_bmi_obese(app_module):
-    result = app_module.calculate_bmi(160, 90)
-
-    assert result["category"] == "Obese"
-
-
-def test_calculate_bmi_invalid(app_module):
-    assert app_module.calculate_bmi(0, 60) is None
-    assert app_module.calculate_bmi(165, 0) is None
-
-
-def test_bmi_for_saved_client(client):
-    create_client(client)
-
-    response = client.get("/api/bmi/Nia")
-
     assert response.status_code == 200
 
-    data = response.get_json()
+    connection = app_module.conn()
 
-    assert data["client"] == "Nia"
-    assert data["bmi"] == 22.0
-    assert data["category"] == "Normal"
+    row = connection.execute(
+        """
+        SELECT *
+        FROM metrics
+        ORDER BY id DESC
+        LIMIT 1
+        """
+    ).fetchone()
+
+    connection.close()
+
+    assert row["weight"] == 60
+    assert row["waist"] == 75
+    assert row["bodyfat"] == 22
 
 
-def test_bmi_unknown_client(client):
-    response = client.get("/api/bmi/Unknown")
-
-    assert response.status_code == 404
-    assert response.get_json()["error"] == "Client not found"
-
-
-def test_bmi_client_with_invalid_dimensions(client):
-    client.post(
-        "/api/clients",
-        json={
-            "name": "NoDimensions",
-            "program": "Beginner (BG)",
-            "height": 0,
-            "weight": 0,
+def test_metrics_requires_client(client):
+    response = client.post(
+        "/metrics",
+        data={
+            "client_name": "",
         },
     )
-
-    response = client.get("/api/bmi/NoDimensions")
 
     assert response.status_code == 400
 
     assert (
         response.get_json()["error"]
-        == "Client has missing or invalid height/weight"
+        == "client_name is required"
     )
 
 
-def test_bmi_json_endpoint(client):
-    response = client.post(
-        "/bmi",
-        json={
-            "height": 165,
-            "weight": 60,
-        },
-    )
-
-    assert response.status_code == 200
-
-    data = response.get_json()
-
-    assert data["bmi"] == 22.0
-    assert data["category"] == "Normal"
-
-
-def test_bmi_invalid_json(client):
-    response = client.post(
-        "/bmi",
-        json={
-            "height": 0,
-            "weight": 0,
-        },
-    )
-
-    assert response.status_code == 400
-    assert response.get_json()["error"] == "Valid height and weight are required"
-
-
-def test_bmi_html(client):
+def test_bmi_normal(client):
     response = client.post(
         "/bmi",
         data={
@@ -572,62 +291,141 @@ def test_bmi_html(client):
 
     page = response.get_data(as_text=True)
 
-    assert "BMI: 22.0" in page
-    assert "Normal" in page
+    assert "BMI: 22.0 (Normal)" in page
 
 
-def test_bmi_invalid_html(client):
+def test_bmi_underweight(app_module):
+    result = app_module.bmi_info(
+        180,
+        50,
+    )
+
+    assert result[1] == "Underweight"
+
+
+def test_bmi_overweight(app_module):
+    result = app_module.bmi_info(
+        170,
+        80,
+    )
+
+    assert result[1] == "Overweight"
+
+
+def test_bmi_obese(app_module):
+    result = app_module.bmi_info(
+        160,
+        90,
+    )
+
+    assert result[1] == "Obese"
+
+
+def test_invalid_bmi(client):
     response = client.post(
         "/bmi",
         data={
             "height": "0",
-            "weight": "0",
+            "weight": "60",
         },
     )
 
     assert response.status_code == 400
-    assert "Enter valid height and weight" in response.get_data(as_text=True)
+
+    assert (
+        "Invalid height or weight"
+        in response.get_data(as_text=True)
+    )
 
 
-# ---------------------------------------------------------
-# Parsing Helpers
-# ---------------------------------------------------------
+def test_parse_int(app_module):
+    assert app_module.parse_int("10") == 10
+    assert app_module.parse_int("10.9") == 10
+    assert app_module.parse_int("") == 0
+    assert app_module.parse_int(None) == 0
+    assert app_module.parse_int("abc") == 0
+
 
 def test_parse_float(app_module):
     assert app_module.parse_float("10.5") == 10.5
     assert app_module.parse_float("") == 0.0
     assert app_module.parse_float(None) == 0.0
-    assert app_module.parse_float("invalid") == 0.0
+    assert app_module.parse_float("abc") == 0.0
 
 
-def test_parse_int(app_module):
-    assert app_module.parse_int("10") == 10
-    assert app_module.parse_int("10.8") == 10
-    assert app_module.parse_int("") == 0
-    assert app_module.parse_int(None) == 0
-    assert app_module.parse_int("invalid") == 0
+def test_complete_flow(client, app_module):
+    create_client(client)
 
+    client.post(
+        "/progress",
+        data={
+            "client_name": "Nia",
+            "adherence": "90",
+        },
+    )
 
-# ---------------------------------------------------------
-# Empty API collections
-# ---------------------------------------------------------
+    client.post(
+        "/workout",
+        data={
+            "client_name": "Nia",
+            "date": "2026-10-12",
+            "workout_type": "Strength",
+            "duration_min": "45",
+            "notes": "Full body",
+        },
+    )
 
-def test_empty_progress(client):
-    response = client.get("/api/progress/Unknown")
+    client.post(
+        "/metrics",
+        data={
+            "client_name": "Nia",
+            "date": "2026-10-12",
+            "weight": "59",
+            "waist": "74",
+            "bodyfat": "21",
+        },
+    )
+
+    response = client.get("/")
 
     assert response.status_code == 200
-    assert response.get_json() == []
 
+    page = response.get_data(as_text=True)
 
-def test_empty_workouts(client):
-    response = client.get("/api/workouts/Unknown")
+    assert "Nia" in page
+    assert "90%" in page
+    assert "Strength" in page
+    assert "Full body" in page
+    assert "74.0" in page
 
-    assert response.status_code == 200
-    assert response.get_json() == []
+    connection = app_module.conn()
 
+    assert (
+        connection.execute(
+            "SELECT COUNT(*) FROM clients"
+        ).fetchone()[0]
+        == 1
+    )
 
-def test_empty_metrics(client):
-    response = client.get("/api/metrics/Unknown")
+    assert (
+        connection.execute(
+            "SELECT COUNT(*) FROM progress"
+        ).fetchone()[0]
+        == 1
+    )
 
-    assert response.status_code == 200
-    assert response.get_json() == []
+    assert (
+        connection.execute(
+            "SELECT COUNT(*) FROM workouts"
+        ).fetchone()[0]
+        == 1
+    )
+
+    assert (
+        connection.execute(
+            "SELECT COUNT(*) FROM metrics"
+        ).fetchone()[0]
+        == 1
+    )
+
+    connection.close()
