@@ -34,37 +34,81 @@ def client(app_module):
     return app_module.app.test_client()
 
 
+def create_client(client):
+    return client.post(
+        "/api/clients",
+        json={
+            "name": "Nia",
+            "age": 25,
+            "height": 165,
+            "weight": 60,
+            "program": "Fat Loss (FL) – 3 day",
+            "target_weight": 55,
+            "target_adherence": 90,
+        },
+    )
+
+
 def test_health(client):
     assert client.get("/health").get_json() == {"status": "healthy"}
 
 
-def test_save_client_and_progress_chart(client, app_module):
-    save = client.post(
-        "/",
-        data={
-            "action": "save",
-            "name": "Nia",
-            "age": "25",
-            "weight": "60",
-            "program": "Fat Loss (FL)",
+def test_create_and_fetch_client(client):
+    response = create_client(client)
+    assert response.status_code == 201
+    data = response.get_json()
+    assert data["name"] == "Nia"
+    assert data["calories"] == 1320
+    fetched = client.get("/api/clients/Nia")
+    assert fetched.status_code == 200
+    assert fetched.get_json()["target_adherence"] == 90
+
+
+def test_progress_workout_and_metrics_apis(client):
+    create_client(client)
+    progress = client.post("/progress", json={"client_name": "Nia", "adherence": 87})
+    assert progress.status_code == 201
+    workout = client.post(
+        "/workout",
+        json={
+            "client_name": "Nia",
+            "date": "2026-10-11",
+            "workout_type": "Strength",
+            "duration_min": 60,
+            "notes": "Good session",
+            "exercise_name": "Squat",
+            "sets": 3,
+            "reps": 10,
+            "exercise_weight": 40,
         },
     )
-    assert save.status_code == 200
-    progress = client.post(
-        "/", data={"action": "progress", "name": "Nia", "adherence": "82"}
+    assert workout.status_code == 201
+    metrics = client.post(
+        "/metrics",
+        json={
+            "client_name": "Nia",
+            "date": "2026-10-11",
+            "weight": 60,
+            "waist": 75,
+            "bodyfat": 22,
+        },
     )
-    assert progress.status_code == 200
-    page = progress.get_data(as_text=True)
-    assert "Weekly progress logged" in page
-    assert "<svg" in page
-    assert "82%" in page
-    connection = app_module.get_conn()
-    row = connection.execute("SELECT adherence FROM progress ORDER BY id DESC LIMIT 1").fetchone()
-    connection.close()
-    assert row["adherence"] == 82
+    assert metrics.status_code == 201
+    assert client.get("/api/progress/Nia").get_json()[0]["adherence"] == 87
+    assert client.get("/api/workouts/Nia").get_json()[0]["workout_type"] == "Strength"
+    assert client.get("/api/metrics/Nia").get_json()[0]["waist"] == 75.0
 
 
-def test_empty_progress_has_friendly_message(client):
-    response = client.get("/")
+def test_bmi_for_saved_client(client):
+    create_client(client)
+    response = client.get("/api/bmi/Nia")
     assert response.status_code == 200
-    assert "No progress data available" in response.get_data(as_text=True)
+    data = response.get_json()
+    assert data["client"] == "Nia"
+    assert data["bmi"] == 22.0
+    assert data["category"] == "Normal"
+
+
+def test_invalid_client_payload_is_rejected(client):
+    response = client.post("/api/clients", json={"name": "Nia", "program": "Unknown"})
+    assert response.status_code == 400
