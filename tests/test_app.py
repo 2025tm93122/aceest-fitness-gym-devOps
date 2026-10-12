@@ -58,7 +58,7 @@ def test_save_client_and_progress_chart(client, app_module):
     assert "Weekly progress logged" in page
     assert "<svg" in page
     assert "82%" in page
-    connection = app_module.conn()
+    connection = app_module.get_conn()
     row = connection.execute("SELECT adherence FROM progress ORDER BY id DESC LIMIT 1").fetchone()
     connection.close()
     assert row["adherence"] == 82
