@@ -27,10 +27,14 @@ app.secret_key = "aceest-dev-key"
 DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")
 SECURE_RANDOM = secrets.SystemRandom()
 
+FAT_LOSS = "Fat Loss"
+MUSCLE_GAIN = "Muscle Gain"
+BEGINNER = "Beginner"
+
 PROGRAM_TEMPLATES = {
-    "Fat Loss": ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
-    "Muscle Gain": ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
-    "Beginner": ["Full Body 3x/week", "Light Strength + Mobility"],
+    FAT_LOSS: ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
+    MUSCLE_GAIN: ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
+    BEGINNER: ["Full Body 3x/week", "Light Strength + Mobility"],
 }
 
 
@@ -510,12 +514,12 @@ def generate_program():
         ), 404
 
     current_program = row["program"] or ""
-    if "Fat Loss" in current_program:
-        program_type = "Fat Loss"
+    if FAT_LOSS in current_program:
+        program_type = FAT_LOSS
     elif "Muscle" in current_program:
-        program_type = "Muscle Gain"
-    elif "Beginner" in current_program:
-        program_type = "Beginner"
+        program_type = MUSCLE_GAIN
+    elif BEGINNER in current_program:
+        program_type = BEGINNER
     else:
         # The original v3.2.4 chooses randomly from the program templates.
         program_type = SECURE_RANDOM.choice(list(PROGRAM_TEMPLATES.keys()))
