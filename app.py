@@ -8,14 +8,14 @@ from flask import (
     session,
     url_for,
 )
+from datetime import date
+from io import BytesIO
 import os
 import secrets
 import sqlite3
-from io import BytesIO
 
-# FPDF is used by the original Tkinter v3.1.2 application.  The Flask
-# conversion can use it when installed, but also has a built-in fallback so
-# the application still starts even when the package is not present.
+# The original Tkinter v3.2.4 uses FPDF. Make it optional so this milestone
+# can run even when fpdf2 has not yet been installed in the virtual env.
 try:
     from fpdf import FPDF
 except ImportError:
@@ -27,64 +27,14 @@ app.secret_key = "aceest-dev-key"
 DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")
 SECURE_RANDOM = secrets.SystemRandom()
 
-
-PROGRAMS = {
-    "Fat Loss (FL) – 3 day": {
-        "factor": 22,
-        "desc": "3-day full-body fat loss",
-    },
-    "Fat Loss (FL) – 5 day": {
-        "factor": 24,
-        "desc": "5-day split, higher volume fat loss",
-    },
-    "Muscle Gain (MG) – PPL": {
-        "factor": 35,
-        "desc": "Push/Pull/Legs hypertrophy",
-    },
-    "Beginner (BG)": {
-        "factor": 26,
-        "desc": "3-day simple beginner full-body",
-    },
-}
-
-EXERCISES = {
-    "Strength": [
-        "Squat",
-        "Deadlift",
-        "Bench Press",
-        "Overhead Press",
-        "Pull-Up",
-        "Barbell Row",
-    ],
-    "Hypertrophy": [
-        "Leg Press",
-        "Incline Dumbbell Press",
-        "Lat Pulldown",
-        "Lateral Raise",
-        "Bicep Curl",
-        "Tricep Extension",
-    ],
-    "Conditioning": [
-        "Running",
-        "Cycling",
-        "Rowing",
-        "Burpees",
-        "Jump Rope",
-        "Kettlebell Swings",
-    ],
-    "Full Body": [
-        "Push-Up",
-        "Pull-Up",
-        "Lunge",
-        "Plank",
-        "Dumbbell Row",
-        "Dumbbell Press",
-    ],
+PROGRAM_TEMPLATES = {
+    "Fat Loss": ["Full Body HIIT", "Circuit Training", "Cardio + Weights"],
+    "Muscle Gain": ["Push/Pull/Legs", "Upper/Lower Split", "Full Body Strength"],
+    "Beginner": ["Full Body 3x/week", "Light Strength + Mobility"],
 }
 
 
 def html_page(title, body):
-    """Return a self-contained HTML page for the Flask UI."""
     return f"""<!doctype html>
 <html lang="en">
 <head>
@@ -128,7 +78,7 @@ def column_names(connection, table_name):
 
 
 def ensure_column(connection, table_name, column_name, definition):
-    """Add a column when upgrading from an earlier ACEest milestone database."""
+    """Add fields required by v3.2.4 when an older milestone DB already exists."""
     if column_name not in column_names(connection, table_name):
         connection.execute(
             f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
@@ -136,15 +86,13 @@ def ensure_column(connection, table_name, column_name, definition):
 
 
 def init_db():
-    """Create/migrate the v3.1.2 database without deleting earlier milestone data."""
     connection = get_connection()
     cursor = connection.cursor()
 
     cursor.execute(
         """
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
+            username TEXT PRIMARY KEY,
             password TEXT,
             role TEXT
         )
@@ -167,17 +115,34 @@ def init_db():
             calories INTEGER,
             target_weight REAL,
             target_adherence INTEGER,
-            membership_expiry TEXT
+            membership_status TEXT,
+            membership_end TEXT
         )
         """
     )
 
-    # Earlier milestones may already have a smaller clients table.  Add the
-    # v3.1.2 fields instead of forcing the student to delete the database.
+    # Preserve data from v2.x/v3.1.2 instead of forcing the DB to be deleted.
     ensure_column(connection, "clients", "height", "REAL")
     ensure_column(connection, "clients", "target_weight", "REAL")
     ensure_column(connection, "clients", "target_adherence", "INTEGER")
-    ensure_column(connection, "clients", "membership_expiry", "TEXT")
+    ensure_column(connection, "clients", "membership_status", "TEXT")
+    ensure_column(connection, "clients", "membership_end", "TEXT")
+
+    # If v3.1.2 created membership_expiry, copy it into membership_end where possible.
+    columns = column_names(connection, "clients")
+    if "membership_expiry" in columns:
+        connection.execute(
+            """
+            UPDATE clients
+            SET membership_end = COALESCE(NULLIF(membership_end, ''), membership_expiry)
+            WHERE membership_expiry IS NOT NULL
+            """
+        )
+
+    connection.execute(
+        "UPDATE clients SET membership_status='Active' "
+        "WHERE membership_status IS NULL OR membership_status=''"
+    )
 
     cursor.execute(
         """
@@ -233,7 +198,7 @@ def init_db():
 init_db()
 
 
-def login_required():
+def logged_in():
     return "user" in session
 
 
@@ -290,35 +255,55 @@ def logout():
     return redirect(url_for("login"))
 
 
+@app.get("/")
+def root():
+    return redirect(url_for("dashboard")) if logged_in() else redirect(url_for("login"))
+
+
 def dashboard_html(message=""):
     connection = get_connection()
     clients = connection.execute("SELECT * FROM clients ORDER BY name").fetchall()
+    workouts = connection.execute(
+        "SELECT * FROM workouts ORDER BY date DESC, id DESC"
+    ).fetchall()
+    progress = connection.execute("SELECT * FROM progress ORDER BY id").fetchall()
     connection.close()
 
-    client_options = "".join(
-        f'<option value="{row["name"]}">{row["name"]}</option>'
-        for row in clients
-    )
-    program_options = "".join(
-        f'<option value="{program}">{program}</option>' for program in PROGRAMS
+    options = "".join(
+        f'<option value="{row["name"]}">{row["name"]}</option>' for row in clients
     )
     client_rows = "".join(
         "<tr>"
         f'<td>{row["name"]}</td>'
-        f'<td>{row["age"]}</td>'
-        f'<td>{row["height"]}</td>'
-        f'<td>{row["weight"]}</td>'
-        f'<td>{row["program"]}</td>'
-        f'<td>{row["calories"]}</td>'
-        f'<td>{row["membership_expiry"]}</td>'
+        f'<td>{row["program"] or ""}</td>'
+        f'<td>{row["calories"] if row["calories"] is not None else ""}</td>'
+        f'<td>{row["membership_status"] or ""}</td>'
+        f'<td>{row["membership_end"] or ""}</td>'
         "</tr>"
         for row in clients
     )
+    workout_rows = "".join(
+        "<tr>"
+        f'<td>{row["client_name"]}</td>'
+        f'<td>{row["date"]}</td>'
+        f'<td>{row["workout_type"]}</td>'
+        f'<td>{row["duration_min"]}</td>'
+        f'<td>{row["notes"] or ""}</td>'
+        "</tr>"
+        for row in workouts
+    )
+    progress_rows = "".join(
+        "<tr>"
+        f'<td>{row["client_name"]}</td>'
+        f'<td>{row["week"]}</td>'
+        f'<td>{row["adherence"]}%</td>'
+        "</tr>"
+        for row in progress
+    )
 
     notice = f'<div class="success">{message}</div>' if message else ""
-
     body = f"""
-    <div class="header">ACEest Fitness Dashboard ({session.get('role', '')})</div>
+    <div class="header">ACEest Dashboard ({session.get('role', 'Admin')})</div>
     <div class="container">
       {notice}
       <p><a class="btn secondary" href="/logout">Logout</a></p>
@@ -328,84 +313,95 @@ def dashboard_html(message=""):
           <h2>Add / Save Client</h2>
           <form method="post" action="/client">
             <label>Name</label><input name="name" required>
-            <label>Age</label><input name="age" type="number" min="0">
-            <label>Height (cm)</label><input name="height" type="number" step="0.1" min="0">
-            <label>Weight (kg)</label><input name="weight" type="number" step="0.1" min="0">
-            <label>Program</label><select name="program">{program_options}</select>
-            <label>Membership Expiry (YYYY-MM-DD)</label><input name="membership_expiry">
+            <label>Age</label><input name="age" type="number">
+            <label>Height</label><input name="height" type="number" step="0.1">
+            <label>Weight</label><input name="weight" type="number" step="0.1">
+            <label>Program</label><input name="program">
+            <label>Target Weight</label><input name="target_weight" type="number" step="0.1">
+            <label>Target Adherence</label><input name="target_adherence" type="number">
+            <label>Membership Status</label><input name="membership_status" value="Active">
+            <label>Membership End</label><input name="membership_end" placeholder="YYYY-MM-DD">
             <button type="submit">Save Client</button>
           </form>
         </div>
 
         <div class="card">
           <h2>Generate AI Program</h2>
-          <form method="post" action="/generate">
-            <label>Client</label><select name="client_name">{client_options}</select>
-            <label>Experience</label>
-            <select name="experience">
-              <option value="beginner">beginner</option>
-              <option value="intermediate">intermediate</option>
-              <option value="advanced">advanced</option>
-            </select>
+          <form method="get" action="/generate">
+            <label>Client</label><select name="client_name">{options}</select>
             <button type="submit">Generate AI Program</button>
           </form>
-        </div>
 
-        <div class="card">
-          <h2>Export PDF Report</h2>
+          <h2>Generate PDF Report</h2>
           <form method="get" action="/report">
-            <label>Client</label><select name="client_name">{client_options}</select>
-            <button type="submit">Export PDF Report</button>
+            <label>Client</label><select name="client_name">{options}</select>
+            <button type="submit">Generate PDF Report</button>
           </form>
-        </div>
 
-        <div class="card">
           <h2>Check Membership</h2>
           <form method="get" action="/membership">
-            <label>Client</label><select name="client_name">{client_options}</select>
+            <label>Client</label><select name="client_name">{options}</select>
             <button type="submit">Check Membership</button>
           </form>
         </div>
       </div>
 
       <div class="card">
-        <h2>Clients</h2>
+        <h2>Client Summary</h2>
         <table>
-          <tr>
-            <th>Name</th><th>Age</th><th>Height</th><th>Weight</th>
-            <th>Program</th><th>Calories</th><th>Membership Expiry</th>
-          </tr>
+          <tr><th>Name</th><th>Program</th><th>Calories</th><th>Membership</th><th>End</th></tr>
           {client_rows}
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Progress</h2>
+        <table>
+          <tr><th>Client</th><th>Week</th><th>Adherence</th></tr>
+          {progress_rows}
+        </table>
+      </div>
+
+      <div class="card">
+        <h2>Workouts & Exercises</h2>
+        <form method="post" action="/workout">
+          <label>Client</label><select name="client_name">{options}</select>
+          <label>Date</label><input name="date" value="{date.today().isoformat()}">
+          <label>Type</label>
+          <select name="workout_type">
+            <option>Strength</option>
+            <option>Hypertrophy</option>
+            <option>Cardio</option>
+            <option>Mobility</option>
+          </select>
+          <label>Duration (min)</label><input name="duration_min" value="60" type="number">
+          <label>Notes</label><input name="notes">
+          <button type="submit">Add Workout</button>
+        </form>
+        <table>
+          <tr><th>Client</th><th>Date</th><th>Type</th><th>Duration</th><th>Notes</th></tr>
+          {workout_rows}
         </table>
       </div>
     </div>
     """
-    return html_page("ACEest Fitness Dashboard", body)
-
-
-@app.get("/")
-def root():
-    if login_required():
-        return redirect(url_for("dashboard"))
-    return redirect(url_for("login"))
+    return html_page("ACEest Dashboard", body)
 
 
 @app.get("/dashboard")
 def dashboard():
-    if not login_required():
+    if not logged_in():
         return redirect(url_for("login"))
     return render_template_string(dashboard_html())
 
 
 @app.post("/client")
 def save_client():
-    if not login_required():
+    if not logged_in():
         return redirect(url_for("login"))
 
     form = request.form
     name = form.get("name", "").strip()
-    program = form.get("program", "")
-
     if not name:
         return render_template_string(dashboard_html("Name is required")), 400
 
@@ -413,27 +409,35 @@ def save_client():
         age = int(form.get("age") or 0)
         height = float(form.get("height") or 0)
         weight = float(form.get("weight") or 0)
+        target_weight = float(form.get("target_weight") or 0) or None
+        target_adherence = int(float(form.get("target_adherence") or 0)) or None
     except ValueError:
         return render_template_string(
-            dashboard_html("Age, height and weight must be valid numbers")
+            dashboard_html("Age, height, weight and targets must be valid numbers")
         ), 400
 
-    factor = PROGRAMS.get(program, {}).get("factor", 25)
-    calories = int(weight * factor) if weight > 0 else None
+    program = form.get("program", "").strip()
+    # v3.2.4 no longer has the earlier program-factor dictionary. Keep the
+    # conversion's simple default factor for the optional calorie summary.
+    calories = int(weight * 25) if weight > 0 else None
 
     connection = get_connection()
     connection.execute(
         """
         INSERT INTO clients
-            (name, age, height, weight, program, calories, membership_expiry)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+            (name, age, height, weight, program, calories,
+             target_weight, target_adherence, membership_status, membership_end)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
             age=excluded.age,
             height=excluded.height,
             weight=excluded.weight,
             program=excluded.program,
             calories=excluded.calories,
-            membership_expiry=excluded.membership_expiry
+            target_weight=excluded.target_weight,
+            target_adherence=excluded.target_adherence,
+            membership_status=excluded.membership_status,
+            membership_end=excluded.membership_end
         """,
         (
             name,
@@ -442,29 +446,56 @@ def save_client():
             weight,
             program,
             calories,
-            form.get("membership_expiry", "").strip(),
+            target_weight,
+            target_adherence,
+            form.get("membership_status", "Active").strip() or "Active",
+            form.get("membership_end", "").strip(),
         ),
     )
     connection.commit()
     connection.close()
-
     return redirect(url_for("dashboard", saved=1))
 
 
-@app.post("/generate")
-def generate():
-    if not login_required():
+@app.post("/workout")
+def add_workout():
+    if not logged_in():
         return redirect(url_for("login"))
 
-    client_name = request.form.get("client_name", "").strip()
-    experience = request.form.get("experience", "beginner").lower()
-
-    if experience not in {"beginner", "intermediate", "advanced"}:
-        experience = "beginner"
+    form = request.form
+    try:
+        duration = int(float(form.get("duration_min") or 0))
+    except ValueError:
+        return render_template_string(dashboard_html("Duration must be a number")), 400
 
     connection = get_connection()
+    connection.execute(
+        """
+        INSERT INTO workouts(client_name, date, workout_type, duration_min, notes)
+        VALUES (?, ?, ?, ?, ?)
+        """,
+        (
+            form.get("client_name", ""),
+            form.get("date", ""),
+            form.get("workout_type", ""),
+            duration,
+            form.get("notes", ""),
+        ),
+    )
+    connection.commit()
+    connection.close()
+    return redirect(url_for("dashboard"))
+
+
+@app.get("/generate")
+def generate_program():
+    if not logged_in():
+        return redirect(url_for("login"))
+
+    name = request.args.get("client_name", "").strip()
+    connection = get_connection()
     row = connection.execute(
-        "SELECT program FROM clients WHERE name=?", (client_name,)
+        "SELECT program FROM clients WHERE name=?", (name,)
     ).fetchone()
     connection.close()
 
@@ -478,64 +509,56 @@ def generate():
             )
         ), 404
 
-    program_name = row["program"] or ""
-    if "Fat Loss" in program_name:
-        focus = "Conditioning"
-    elif "Muscle Gain" in program_name:
-        focus = "Hypertrophy"
+    current_program = row["program"] or ""
+    if "Fat Loss" in current_program:
+        program_type = "Fat Loss"
+    elif "Muscle" in current_program:
+        program_type = "Muscle Gain"
+    elif "Beginner" in current_program:
+        program_type = "Beginner"
     else:
-        focus = "Full Body"
+        # The original v3.2.4 chooses randomly from the program templates.
+        program_type = SECURE_RANDOM.choice(list(PROGRAM_TEMPLATES.keys()))
 
-    settings = {
-        "beginner": {"days": 3, "sets": (2, 3), "reps": (8, 12)},
-        "intermediate": {"days": 4, "sets": (3, 4), "reps": (8, 15)},
-        "advanced": {"days": 5, "sets": (4, 5), "reps": (6, 15)},
-    }[experience]
+    program_detail = SECURE_RANDOM.choice(PROGRAM_TEMPLATES[program_type])
 
-    days_list = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"][
-        : settings["days"]
-    ]
-    selected = []
-    exercises_per_day = 3 if settings["days"] < 4 else 4
+    connection = get_connection()
+    connection.execute(
+        "UPDATE clients SET program=? WHERE name=?", (program_detail, name)
+    )
+    connection.commit()
+    connection.close()
 
-    for day in days_list:
-        exercises = SECURE_RANDOM.sample(EXERCISES[focus], k=exercises_per_day)
-        for exercise in exercises:
-            selected.append(
-                f"{day}: {exercise} - "
-                f"{SECURE_RANDOM.randint(*settings['sets'])} sets x "
-                f"{SECURE_RANDOM.randint(*settings['reps'])} reps"
-            )
-
-    program_text = "\n".join(selected)
     body = f"""
-    <div class="header">Generated AI Program</div>
+    <div class="header">Program Generated</div>
     <div class="container">
       <div class="card">
-        <h2>{client_name}</h2>
-        <p>Focus: {focus} | Experience: {experience}</p>
-        <pre>{program_text}</pre>
+        <h2>{name}</h2>
+        <p>Program: {program_detail}</p>
         <a class="btn" href="/dashboard">Back</a>
       </div>
     </div>
     """
-    return render_template_string(html_page("Generated Program", body))
+    return render_template_string(html_page("Program Generated", body))
 
 
 @app.get("/membership")
 def membership():
-    if not login_required():
+    if not logged_in():
         return redirect(url_for("login"))
 
-    client_name = request.args.get("client_name", "").strip()
+    name = request.args.get("client_name", "").strip()
     connection = get_connection()
     row = connection.execute(
-        "SELECT name, membership_expiry FROM clients WHERE name=?", (client_name,)
+        "SELECT membership_status, membership_end FROM clients WHERE name=?", (name,)
     ).fetchone()
     connection.close()
 
     if row:
-        message = f"Membership Expiry: {row['membership_expiry'] or 'N/A'}"
+        message = (
+            f"Membership: {row['membership_status'] or 'N/A'}\n"
+            f"Renewal Date: {row['membership_end'] or 'N/A'}"
+        )
     else:
         message = "Client not found."
 
@@ -543,8 +566,8 @@ def membership():
     <div class="header">Membership</div>
     <div class="container">
       <div class="card">
-        <h2>{client_name or 'Client'}</h2>
-        <div class="alert">{message}</div>
+        <h2>{name or 'Client'}</h2>
+        <pre>{message}</pre>
         <a class="btn" href="/dashboard">Back</a>
       </div>
     </div>
@@ -553,11 +576,9 @@ def membership():
 
 
 def pdf_escape(value):
-    """Return PDF-safe text compatible with built-in PDF fonts."""
+    """Return text safe for the built-in PDF fonts."""
     text = str(value)
 
-    # Normalize common Unicode punctuation unsupported by
-    # built-in Helvetica.
     text = (
         text.replace("–", "-")
         .replace("—", "-")
@@ -567,22 +588,21 @@ def pdf_escape(value):
         .replace("”", '"')
     )
 
-    # Keep the fallback PDF content Latin-1 compatible.
     text = text.encode("latin-1", "replace").decode("latin-1")
 
-    # Escape PDF control characters used by the fallback writer.
     return (
         text.replace("\\", "\\\\")
         .replace("(", "\\(")
         .replace(")", "\\)")
     )
 
-
 def build_basic_pdf(title, lines):
-    """Create a small valid one-page PDF using only Python's standard library."""
+    """Build a valid one-page PDF without third-party packages."""
     content_lines = ["BT", "/F1 16 Tf", "72 760 Td", f"({pdf_escape(title)}) Tj"]
     for line in lines:
-        content_lines.extend(["0 -24 Td", "/F1 12 Tf", f"({pdf_escape(line)}) Tj"])
+        content_lines.extend(
+            ["0 -24 Td", "/F1 12 Tf", f"({pdf_escape(line)}) Tj"]
+        )
     content_lines.append("ET")
     stream = "\n".join(content_lines).encode("latin-1")
 
@@ -590,7 +610,11 @@ def build_basic_pdf(title, lines):
         b"<< /Type /Catalog /Pages 2 0 R >>",
         b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>",
-        b"<< /Length " + str(len(stream)).encode("ascii") + b" >>\nstream\n" + stream + b"\nendstream",
+        b"<< /Length "
+        + str(len(stream)).encode("ascii")
+        + b" >>\nstream\n"
+        + stream
+        + b"\nendstream",
         b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
     ]
 
@@ -617,45 +641,43 @@ def build_basic_pdf(title, lines):
 
 
 def create_report_pdf(client):
-    report_lines = [
-        f"Name: {client['name']}",
-        f"Age: {client['age']}",
-        f"Height: {client['height']} cm",
-        f"Weight: {client['weight']} kg",
-        f"Program: {client['program']}",
-        f"Calories: {client['calories']}",
-        f"Membership Expiry: {client['membership_expiry']}",
+    labels = [
+        ("ID", "id"),
+        ("Name", "name"),
+        ("Age", "age"),
+        ("Height", "height"),
+        ("Weight", "weight"),
+        ("Program", "program"),
+        ("Calories", "calories"),
+        ("Target Weight", "target_weight"),
+        ("Target Adherence", "target_adherence"),
+        ("Membership", "membership_status"),
+        ("End", "membership_end"),
     ]
+    lines = [f"{label}: {client[key]}" for label, key in labels]
 
     if FPDF is None:
-        return build_basic_pdf(f"Client Report - {client['name']}", report_lines)
+        return build_basic_pdf(f"ACEest Client Report - {client['name']}", lines)
 
     pdf = FPDF()
     pdf.add_page()
     pdf.set_font("Helvetica", "B", 16)
 
-    safe_title = pdf_escape(
-        f"Client Report - {client['name']}"
-    )
-
     pdf.cell(
         0,
         10,
-        safe_title,
+        pdf_escape(f"ACEest Client Report - {client['name']}"),
         new_x="LMARGIN",
         new_y="NEXT",
-        align="C",
     )
 
     pdf.set_font("Helvetica", "", 12)
 
-    for line in report_lines:
-        safe_line = pdf_escape(line)
-
+    for line in lines:
         pdf.cell(
             0,
             10,
-            safe_line,
+            pdf_escape(line),
             new_x="LMARGIN",
             new_y="NEXT",
         )
@@ -665,39 +687,36 @@ def create_report_pdf(client):
         return result
     if isinstance(result, bytearray):
         return bytes(result)
-    return result.encode("latin-1")
+    return str(result).encode("latin-1", "replace")
 
 
 @app.get("/report")
 def report():
-    if not login_required():
+    if not logged_in():
         return redirect(url_for("login"))
 
-    client_name = request.args.get("client_name", "").strip()
+    name = request.args.get("client_name", "").strip()
     connection = get_connection()
     client = connection.execute(
-        "SELECT * FROM clients WHERE name=?", (client_name,)
+        "SELECT * FROM clients WHERE name=?", (name,)
     ).fetchone()
     connection.close()
 
     if not client:
-        body = """
-        <div class="header">PDF Report</div>
-        <div class="container">
-          <div class="alert">Client not found.</div>
-          <a class="btn" href="/dashboard">Back</a>
-        </div>
-        """
-        return render_template_string(html_page("PDF Report", body)), 404
+        return render_template_string(
+            html_page(
+                "PDF Report",
+                '<div class="header">PDF Report</div>'
+                '<div class="container"><div class="alert">Client not found.</div>'
+                '<a class="btn" href="/dashboard">Back</a></div>',
+            )
+        ), 404
 
     pdf_bytes = create_report_pdf(client)
     output = BytesIO(pdf_bytes)
     output.seek(0)
+    safe_name = "".join(ch for ch in name if ch.isalnum() or ch in ("-", "_")) or "client"
 
-    safe_name = "".join(
-        character if character.isalnum() or character in "-_" else "_"
-        for character in client_name
-    )
     return send_file(
         output,
         mimetype="application/pdf",
