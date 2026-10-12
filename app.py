@@ -379,8 +379,13 @@ def save_client():
     program = source.get('program', '').strip()
 
     if not name or program not in PROGRAMS:
-        return render_template_string(
-            html_page('Error', '<div class="container"><div class="error">Name and a valid program are required.</div><a class="btn" href="/">Back</a></div>'),
+        return (
+            render_template_string(
+                html_page(
+                    'Error',
+                    '<div class="container"><div class="error">Name and a valid program are required.</div><a class="btn" href="/">Back</a></div>'
+                )
+            ),
             400,
         )
 
