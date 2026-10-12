@@ -9,7 +9,7 @@ from flask import (
     url_for,
 )
 import os
-import random
+import secrets
 import sqlite3
 from io import BytesIO
 
@@ -25,6 +25,7 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = "aceest-dev-key"
 DB_NAME = os.environ.get("DATABASE_PATH", "aceest_fitness.db")
+SECURE_RANDOM = secrets.SystemRandom()
 
 
 PROGRAMS = {
@@ -498,12 +499,12 @@ def generate():
     exercises_per_day = 3 if settings["days"] < 4 else 4
 
     for day in days_list:
-        exercises = random.sample(EXERCISES[focus], k=exercises_per_day)
+        exercises = SECURE_RANDOM.sample(EXERCISES[focus], k=exercises_per_day)
         for exercise in exercises:
             selected.append(
                 f"{day}: {exercise} - "
-                f"{random.randint(*settings['sets'])} sets x "
-                f"{random.randint(*settings['reps'])} reps"
+                f"{SECURE_RANDOM.randint(*settings['sets'])} sets x "
+                f"{SECURE_RANDOM.randint(*settings['reps'])} reps"
             )
 
     program_text = "\n".join(selected)
