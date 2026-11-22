@@ -65,75 +65,79 @@ pipeline {
 
         stage('Quality Gate') {
             steps {
-                script {
-                    timeout(time: 10, unit: 'MINUTES') {
+                withSonarQubeEnv('SonarQube') {
+                    sh '''
+                        set -e
 
-                        def props = readProperties(
-                            file: '.scannerwork/report-task.txt'
-                        )
+                        echo "===== SONARQUBE QUALITY GATE ====="
 
-                        def ceTaskUrl = props['ceTaskUrl']
+                        CE_TASK_URL=$(grep '^ceTaskUrl=' .scannerwork/report-task.txt | cut -d= -f2-)
 
-                        if (!ceTaskUrl) {
-                            error 'Could not find SonarQube CE task URL.'
-                        }
+                        if [ -z "$CE_TASK_URL" ]; then
+                            echo "ERROR: SonarQube CE task URL not found."
+                            exit 1
+                        fi
 
-                        def analysisId = null
+                        echo "Waiting for SonarQube analysis..."
 
-                        while (analysisId == null) {
+                        ANALYSIS_ID=""
 
-                            def response = sh(
-                                script: "curl -s '${ceTaskUrl}'",
-                                returnStdout: true
-                            ).trim()
+                        for i in $(seq 1 60); do
 
-                            def json = readJSON text: response
-                            def taskStatus = json.task.status
+                            RESPONSE=$(curl -sf \
+                                -u "$SONAR_AUTH_TOKEN:" \
+                                "$CE_TASK_URL" || true)
 
-                            echo "SonarQube task status: ${taskStatus}"
+                            if [ -z "$RESPONSE" ]; then
+                                echo "SonarQube response not ready. Retrying..."
+                                sleep 5
+                                continue
+                            fi
 
-                            if (taskStatus == 'SUCCESS') {
+                            STATUS=$(printf '%s' "$RESPONSE" | \
+                                python3.12 -c 'import sys,json; print(json.load(sys.stdin)["task"]["status"])')
 
-                                analysisId = json.task.analysisId
+                            echo "SonarQube task status: $STATUS"
 
-                            } else if (
-                                taskStatus == 'FAILED' ||
-                                taskStatus == 'CANCELED'
-                            ) {
+                            if [ "$STATUS" = "SUCCESS" ]; then
 
-                                error "SonarQube analysis failed: ${taskStatus}"
+                                ANALYSIS_ID=$(printf '%s' "$RESPONSE" | \
+                                    python3.12 -c 'import sys,json; print(json.load(sys.stdin)["task"]["analysisId"])')
 
-                            } else {
+                                break
 
-                                sleep(
-                                    time: 10,
-                                    unit: 'SECONDS'
-                                )
-                            }
-                        }
+                            elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELED" ]; then
 
-                        def qualityGateResponse = sh(
-                            script: """
-                                curl -s \
-                                'http://localhost:9000/api/qualitygates/project_status?analysisId=${analysisId}'
-                            """,
-                            returnStdout: true
-                        ).trim()
+                                echo "SonarQube analysis failed: $STATUS"
+                                exit 1
+                            fi
 
-                        def qualityGateJson =
-                            readJSON text: qualityGateResponse
+                            sleep 5
+                        done
 
-                        def qualityGateStatus =
-                            qualityGateJson.projectStatus.status
+                        if [ -z "$ANALYSIS_ID" ]; then
+                            echo "ERROR: SonarQube analysis timed out."
+                            exit 1
+                        fi
 
-                        echo "Quality Gate Status: ${qualityGateStatus}"
+                        echo "Analysis ID: $ANALYSIS_ID"
 
-                        if (qualityGateStatus != 'OK') {
-                            error "Quality Gate failed: ${qualityGateStatus}"
-                        }
+                        QUALITY_RESPONSE=$(curl -sf \
+                            -u "$SONAR_AUTH_TOKEN:" \
+                            "$SONAR_HOST_URL/api/qualitygates/project_status?analysisId=$ANALYSIS_ID")
 
-                        echo 'QUALITY GATE PASSED'
-                    }
+                        QUALITY_STATUS=$(printf '%s' "$QUALITY_RESPONSE" | \
+                            python3.12 -c 'import sys,json; print(json.load(sys.stdin)["projectStatus"]["status"])')
+
+                        echo "Quality Gate Status: $QUALITY_STATUS"
+
+                        if [ "$QUALITY_STATUS" != "OK" ]; then
+                            echo "QUALITY GATE FAILED"
+                            exit 1
+                        fi
+
+                        echo "QUALITY GATE PASSED"
+                    '''
                 }
             }
         }
